@@ -64,6 +64,21 @@ enum {
 	IB_USER_VERBS_EXP_CMD_REG_MR_EX,
 	IB_USER_VERBS_EXP_CMD_PREFETCH_MR,
 	IB_USER_VERBS_EXP_CMD_REREG_MR,
+	IB_USER_VERBS_EXP_CMD_CREATE_WQ,
+	IB_USER_VERBS_EXP_CMD_MODIFY_WQ,
+	IB_USER_VERBS_EXP_CMD_DESTROY_WQ,
+	IB_USER_VERBS_EXP_CMD_CREATE_RWQ_IND_TBL,
+	IB_USER_VERBS_EXP_CMD_DESTROY_RWQ_IND_TBL
+};
+
+struct ib_uverbs_exp_hash_conf {
+	/* enum ib_rx_hash_fields */
+	__u64 rx_hash_fields_mask;
+	__u32 rwq_ind_tbl_handle;
+	__u8 rx_hash_function; /* enum ib_rx_hash_function_flags */
+	__u8 rx_key_len; /* valid only for Toeplitz */
+	__u8 rx_hash_key[128]; /* valid only for Toeplitz */
+	__u8 reserved[2];
 };
 
 /*
@@ -129,6 +144,9 @@ struct ib_uverbs_exp_create_qp {
 	__u32 reserved1;
 	struct ib_uverbs_qpg qpg;
 	__u64 max_inl_send_klms;
+	struct ib_uverbs_exp_hash_conf rx_hash_conf;
+	uint8_t	port_num;
+	__u8  reserved_2[7];
 	__u64 driver_data[0];
 };
 
@@ -243,6 +261,15 @@ struct ib_uverbs_exp_odp_caps {
 	} per_transport_caps;
 };
 
+struct ib_uverbs_exp_rx_hash_caps {
+	__u32	max_rwq_indirection_tables;
+	__u32	max_rwq_indirection_table_size;
+	__u64	supported_packet_fields;
+	__u32	supported_qps;
+	__u8	supported_hash_functions;
+	__u8	reserved[3];
+};
+
 struct ib_uverbs_exp_query_device {
 	__u64 comp_mask;
 	__u64 driver_data[0];
@@ -265,6 +292,9 @@ struct ib_uverbs_exp_query_device_resp {
 	struct ib_uverbs_exp_odp_caps		odp_caps;
 	__u32					max_dct;
 	__u32					max_ctx_res_domain;
+	struct ib_uverbs_exp_rx_hash_caps	rx_hash;
+	__u32					max_wq_type_rq;
+	__u32                                   max_device_ctx;
 };
 
 enum ib_uverbs_exp_modify_cq_comp_mask {
@@ -449,6 +479,63 @@ struct ib_uverbs_exp_prefetch_mr {
 	__u32 flags;
 	__u64 start;
 	__u64 length;
+};
+
+struct ib_uverbs_exp_create_wq  {
+	__u32 comp_mask;
+	__u32 wq_type; /* enum ib_wq_type */
+	__u64 user_handle;
+	__u32 pd_handle;
+	__u32 cq_handle;
+	__u32 srq_handle;
+	__u32 max_recv_wr;
+	__u32 max_recv_sge;
+	__u32 reserved;
+};
+
+struct ib_uverbs_exp_create_wq_resp {
+	__u32 comp_mask;
+	__u32 response_length;
+	__u32 wq_handle;
+	__u32 max_recv_wr;
+	__u32 max_recv_sge;
+	__u32 wqn;
+};
+
+struct ib_uverbs_exp_destroy_wq  {
+	__u32 comp_mask;
+	__u32 wq_handle;
+};
+
+struct ib_uverbs_exp_modify_wq  {
+	__u32 comp_mask;
+	__u32 wq_handle;
+	__u32 wq_state;
+	__u32 curr_wq_state;
+};
+
+struct ib_uverbs_exp_create_rwq_ind_table  {
+	__u32 comp_mask;
+	__u32 pd_handle;
+	__u32 log_ind_tbl_size;
+	__u32 reserved;
+	/* Following are the wq handles according to log_ind_tbl_size
+	 * wq_handle1
+	 * wq_handle2
+	 */
+	__u32 wq_handles[0];
+};
+
+struct ib_uverbs_exp_create_rwq_ind_table_resp {
+	__u32 comp_mask;
+	__u32 response_length;
+	__u32 ind_tbl_handle;
+	__u32 ind_tbl_num;
+};
+
+struct ib_uverbs_exp_destroy_rwq_ind_table  {
+	__u32 comp_mask;
+	__u32 ind_tbl_handle;
 };
 
 #endif /* IB_USER_VERBS_EXP_H */

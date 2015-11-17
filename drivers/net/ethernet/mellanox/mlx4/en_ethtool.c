@@ -284,8 +284,12 @@ static const char mlx4_en_priv_flags[][ETH_GSTRING_LEN] = {
 	"mlx4_flow_steering_udp",
 	"qcn_disable_32_14_4_e",
 	"rx-copy",
+	"phv-bit",
 	"rx-fcs",
 	"rx-all",
+#ifndef HAVE_ETH_SS_RSS_HASH_FUNCS
+	"mlx4_rss_xor_hash_function",
+#endif
 };
 
 static const char main_strings[][ETH_GSTRING_LEN] = {
@@ -1343,15 +1347,14 @@ static void mlx4_en_get_ringparam(struct net_device *dev,
 	param->tx_pending = priv->tx_ring[0]->size;
 }
 
-#ifndef CONFIG_SYSFS_INDIR_SETTING
-static
-#endif
+#if defined(HAVE_RXFH_INDIR_SIZE) || defined(HAVE_RXFH_INDIR_SIZE_EXT)
 u32 mlx4_en_get_rxfh_indir_size(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 
 	return priv->rx_ring_num;
 }
+#endif
 
 #if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
 static u32 mlx4_en_get_rxfh_key_size(struct net_device *netdev)
@@ -1385,19 +1388,17 @@ static int mlx4_en_check_rxfh_func(struct net_device *dev, u8 hfunc)
 }
 #endif
 
-#ifdef CONFIG_SYSFS_INDIR_SETTING
-int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
-#else
-#ifdef HAVE_GET_SET_RXFH_INDIR_EXT
-static int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
-#else
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index,
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
-static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index, u8 *key,
-			    u8 *hfunc)
+			    u8 *key, u8 *hfunc)
 #else
-static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index, u8 *key)
+			    u8 *key)
 #endif
-#endif
+#elif defined(HAVE_GET_SET_RXFH_INDIR) || defined (HAVE_GET_SET_RXFH_INDIR_EXT)
+static int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
+#elif defined(CONFIG_SYSFS_INDIR_SETTING)
+int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
 #endif
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -1415,32 +1416,28 @@ static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index, u8 *key)
 		ring_index[n] = rss_map->qps[n % rss_rings].qpn -
 			rss_map->base_qpn;
 	}
-#if !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && !defined(CONFIG_SYSFS_INDIR_SETTING)
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
 	if (key)
 		memcpy(key, priv->rss_key, MLX4_EN_RSS_KEY_SIZE);
-#endif
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 	if (hfunc)
 		*hfunc = priv->rss_hash_fn;
 #endif
+#endif
 	return err;
 }
 
-#ifdef CONFIG_SYSFS_INDIR_SETTING
-int mlx4_en_set_rxfh_indir(struct net_device *dev,
-		const u32 *ring_index)
-#else
-#ifdef HAVE_GET_SET_RXFH_INDIR_EXT
-static int mlx4_en_set_rxfh_indir(struct net_device *dev,
-		const u32 *ring_index)
-#else
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
 static int mlx4_en_set_rxfh(struct net_device *dev, const u32 *ring_index,
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 			    const u8 *key, const u8 hfunc)
 #else
 			    const u8 *key)
 #endif
-#endif
+#elif defined(HAVE_GET_SET_RXFH_INDIR) || defined (HAVE_GET_SET_RXFH_INDIR_EXT)
+static int mlx4_en_set_rxfh_indir(struct net_device *dev, const u32 *ring_index)
+#elif defined(CONFIG_SYSFS_INDIR_SETTING)
+int mlx4_en_set_rxfh_indir(struct net_device *dev, const u32 *ring_index)
 #endif
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -1469,8 +1466,7 @@ static int mlx4_en_set_rxfh(struct net_device *dev, const u32 *ring_index,
 	/* RSS table size must be an order of 2 */
 	if (!is_power_of_2(rss_rings))
 		return -EINVAL;
-
-#ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && defined(HAVE_ETH_SS_RSS_HASH_FUNCS)
 	if (hfunc != ETH_RSS_HASH_NO_CHANGE) {
 		err = mlx4_en_check_rxfh_func(dev, hfunc);
 		if (err)
@@ -1486,7 +1482,7 @@ static int mlx4_en_set_rxfh(struct net_device *dev, const u32 *ring_index,
 
 	if (ring_index)
 		priv->prof->rss_rings = rss_rings;
-#if !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && !defined(CONFIG_SYSFS_INDIR_SETTING)
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
 	if (key)
 		memcpy(priv->rss_key, key, MLX4_EN_RSS_KEY_SIZE);
 #endif
@@ -1912,7 +1908,7 @@ static int mlx4_en_get_num_flows(struct mlx4_en_priv *priv)
 
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,2,0))
+#ifdef HAVE_ETHTOOL_OPS_GET_RXNFC_U32_RULE_LOCS
 static int mlx4_en_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *c,
 			     u32 *rule_locs)
 #else
@@ -1947,7 +1943,7 @@ static int mlx4_en_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *c,
 		while ((!err || err == -ENOENT) && priority < cmd->rule_cnt) {
 			err = mlx4_en_get_flow(dev, cmd, i);
 			if (!err)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,2,0))
+#ifdef HAVE_ETHTOOL_OPS_GET_RXNFC_U32_RULE_LOCS
 				rule_locs[priority++] = i;
 #else
 				((u32 *)(rule_locs))[priority++] = i;
@@ -2068,12 +2064,8 @@ int mlx4_en_set_channels(struct net_device *dev,
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 #ifdef HAVE_NEW_TX_RING_SCHEME
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39))
-	if (dev->num_tc)
-#else
 	if (netdev_get_num_tc(dev))
-#endif
-	mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
+		mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
 #endif
 
 	en_warn(priv, "Using %d TX rings\n", priv->tx_ring_num);
@@ -2177,7 +2169,11 @@ static int mlx4_en_set_priv_flags(struct net_device *dev, u32 flags)
 	struct mlx4_en_dev *mdev = priv->mdev;
 	bool bf_enabled_new = !!(flags & MLX4_EN_PRIV_FLAGS_BLUEFLAME);
 	bool bf_enabled_old = !!(priv->pflags & MLX4_EN_PRIV_FLAGS_BLUEFLAME);
+	bool phv_enabled_new = !!(flags & MLX4_EN_PRIV_FLAGS_PHV);
+	bool phv_enabled_old = !!(priv->pflags & MLX4_EN_PRIV_FLAGS_PHV);
 	int i;
+	int ret = 0;
+	int restart_port = 0;
 
 	if ((flags ^ priv->pflags) &
 	    (MLX4_EN_PRIV_FLAGS_FS_EN_L2	|
@@ -2185,6 +2181,24 @@ static int mlx4_en_set_priv_flags(struct net_device *dev, u32 flags)
 	     MLX4_EN_PRIV_FLAGS_FS_EN_TCP	|
 	     MLX4_EN_PRIV_FLAGS_FS_EN_UDP))
 		return -EINVAL;
+
+#ifndef HAVE_ETH_SS_RSS_HASH_FUNCS
+	if ((flags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR) &&
+	    !(priv->pflags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR)) {
+		priv->pflags |= MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR;
+#ifdef HAVE_NETIF_F_RXHASH
+		dev->features &= ~NETIF_F_RXHASH;
+#endif
+		restart_port = 1;
+	} else if (!(flags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR) &&
+		   (priv->pflags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR)) {
+		priv->pflags &= ~MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR;
+#ifdef HAVE_NETIF_F_RXHASH
+		dev->features |= NETIF_F_RXHASH;
+#endif
+		restart_port = 1;
+	}
+#endif
 
 #ifndef CONFIG_COMPAT_DISABLE_DCB
 	if ((flags & MLX4_EN_PRIV_FLAGS_DISABLE_32_14_4_E) &&
@@ -2293,30 +2307,52 @@ static int mlx4_en_set_priv_flags(struct net_device *dev, u32 flags)
 			return ret;
 	}
 
-	if (bf_enabled_new == bf_enabled_old)
-		return 0; /* Nothing to do */
+	if (bf_enabled_new != bf_enabled_old) {
+		if (bf_enabled_new) {
+			bool bf_supported = true;
 
-	if (bf_enabled_new) {
-		bool bf_supported = true;
+			for (i = 0; i < priv->tx_ring_num; i++)
+				bf_supported &= priv->tx_ring[i]->bf_alloced;
 
-		for (i = 0; i < priv->tx_ring_num; i++)
-			bf_supported &= priv->tx_ring[i]->bf_alloced;
+			if (!bf_supported) {
+				en_err(priv, "BlueFlame is not supported\n");
+				return -EINVAL;
+			}
 
-		if (!bf_supported) {
-			en_err(priv, "BlueFlame is not supported\n");
-			return -EINVAL;
+			priv->pflags |= MLX4_EN_PRIV_FLAGS_BLUEFLAME;
+		} else {
+			priv->pflags &= ~MLX4_EN_PRIV_FLAGS_BLUEFLAME;
 		}
 
-		priv->pflags |= MLX4_EN_PRIV_FLAGS_BLUEFLAME;
-	} else {
-		priv->pflags &= ~MLX4_EN_PRIV_FLAGS_BLUEFLAME;
+		for (i = 0; i < priv->tx_ring_num; i++)
+			priv->tx_ring[i]->bf_enabled = bf_enabled_new;
+
+		en_info(priv, "BlueFlame %s\n",
+			bf_enabled_new ?  "Enabled" : "Disabled");
 	}
 
-	for (i = 0; i < priv->tx_ring_num; i++)
-		priv->tx_ring[i]->bf_enabled = bf_enabled_new;
+	if (phv_enabled_new != phv_enabled_old) {
+#ifndef HAVE_NETIF_F_HW_VLAN_STAG_RX
+		return -EOPNOTSUPP;
+#endif
+		ret = set_phv_bit(mdev->dev, priv->port, (int)phv_enabled_new);
+		if (ret)
+			return ret;
+		else if (phv_enabled_new)
+			priv->pflags |= MLX4_EN_PRIV_FLAGS_PHV;
+		else
+			priv->pflags &= ~MLX4_EN_PRIV_FLAGS_PHV;
+		en_info(priv, "PHV bit %s\n",
+			phv_enabled_new ?  "Enabled" : "Disabled");
+	}
 
-	en_info(priv, "BlueFlame %s\n",
-		bf_enabled_new ?  "Enabled" : "Disabled");
+	mutex_lock(&mdev->state_lock);
+	if (restart_port && priv->port_up) {
+		mlx4_en_stop_port(dev, 1);
+		if (mlx4_en_start_port(dev))
+			en_err(priv, "Failed restart port %d\n", priv->port);
+	}
+	mutex_unlock(&mdev->state_lock);
 
 	return !(flags == priv->pflags);
 }
@@ -2380,7 +2416,7 @@ static int mlx4_en_set_tunable(struct net_device *dev,
 }
 #endif
 
-#ifdef HAVE_GET_MODULE_EEPROM
+#if defined(HAVE_GET_MODULE_EEPROM) || defined(HAVE_GET_MODULE_EEPROM_EXT)
 static int mlx4_en_get_module_info(struct net_device *dev,
 				   struct ethtool_modinfo *modinfo)
 {
@@ -2425,7 +2461,7 @@ static int mlx4_en_get_module_info(struct net_device *dev,
 }
 #endif
 
-#ifdef HAVE_GET_MODULE_EEPROM
+#if defined(HAVE_GET_MODULE_EEPROM) || defined(HAVE_GET_MODULE_EEPROM_EXT)
 static int mlx4_en_get_module_eeprom(struct net_device *dev,
 				     struct ethtool_eeprom *ee,
 				     u8 *data)
@@ -2533,11 +2569,16 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 #endif
 	.get_rxnfc = mlx4_en_get_rxnfc,
 	.set_rxnfc = mlx4_en_set_rxnfc,
-#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+#if defined(HAVE_RXFH_INDIR_SIZE) && !defined(HAVE_RXFH_INDIR_SIZE_EXT)
 	.get_rxfh_indir_size = mlx4_en_get_rxfh_indir_size,
+#endif
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
 	.get_rxfh_key_size = mlx4_en_get_rxfh_key_size,
 	.get_rxfh = mlx4_en_get_rxfh,
 	.set_rxfh = mlx4_en_set_rxfh,
+#elif defined(HAVE_GET_SET_RXFH_INDIR) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+	.get_rxfh_indir = mlx4_en_get_rxfh_indir,
+	.set_rxfh_indir = mlx4_en_set_rxfh_indir,
 #endif
 #ifdef HAVE_GET_SET_CHANNELS
 	.get_channels = mlx4_en_get_channels,
@@ -2561,7 +2602,9 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 #ifdef HAVE_ETHTOOL_OPS_EXT
 const struct ethtool_ops_ext mlx4_en_ethtool_ops_ext = {
 	.size = sizeof(struct ethtool_ops_ext),
+#ifdef HAVE_RXFH_INDIR_SIZE_EXT
 	.get_rxfh_indir_size = mlx4_en_get_rxfh_indir_size,
+#endif
 #ifdef HAVE_GET_SET_RXFH_INDIR_EXT
 	.get_rxfh_indir = mlx4_en_get_rxfh_indir,
 	.set_rxfh_indir = mlx4_en_set_rxfh_indir,
@@ -2575,6 +2618,10 @@ const struct ethtool_ops_ext mlx4_en_ethtool_ops_ext = {
 #endif
 #ifdef HAVE_SET_PHYS_ID_EXT
 	.set_phys_id = mlx4_en_set_phys_id,
+#endif
+#ifdef HAVE_GET_MODULE_EEPROM_EXT
+	.get_module_info = mlx4_en_get_module_info,
+	.get_module_eeprom = mlx4_en_get_module_eeprom,
 #endif
 };
 #endif

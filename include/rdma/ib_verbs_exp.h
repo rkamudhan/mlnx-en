@@ -95,6 +95,23 @@ struct ib_exp_odp_caps {
 	} per_transport_caps;
 };
 
+enum ib_exp_supported_qp_types {
+	IB_EXP_QPT_RC		= 1ULL << 0,
+	IB_EXP_QPT_UC		= 1ULL << 1,
+	IB_EXP_QPT_UD		= 1ULL << 2,
+	IB_EXP_QPT_XRC_INIT	= 1ULL << 3,
+	IB_EXP_QPT_XRC_TGT	= 1ULL << 4,
+	IB_EXP_QPT_RAW_PACKET	= 1ULL << 5,
+};
+
+struct ib_exp_rx_hash_caps {
+	uint32_t max_rwq_indirection_tables;
+	uint32_t max_rwq_indirection_table_size;
+	uint8_t  supported_hash_functions; /* from ib_rx_hash_function_flags */
+	uint64_t supported_packet_fields;	/* from ib_rx_hash_fields */
+	uint32_t supported_qps;  /* from ib_exp_supported_qp_types */
+};
+
 enum ib_exp_device_attr_comp_mask {
 	IB_EXP_DEVICE_ATTR_WITH_TIMESTAMP_MASK	= 1ULL << 1,
 	IB_EXP_DEVICE_ATTR_WITH_HCA_CORE_CLOCK	= 1ULL << 2,
@@ -108,6 +125,9 @@ enum ib_exp_device_attr_comp_mask {
 	IB_EXP_DEVICE_ATTR_ODP			= 1ULL << 10,
 	IB_EXP_DEVICE_ATTR_MAX_DCT		= 1ULL << 11,
 	IB_EXP_DEVICE_ATTR_MAX_CTX_RES_DOMAIN	= 1ULL << 12,
+	IB_EXP_DEVICE_ATTR_RX_HASH		= 1ULL << 13,
+	IB_EXP_DEVICE_ATTR_MAX_WQ_TYPE_RQ	= 1ULL << 14,
+	IB_EXP_DEVICE_ATTR_MAX_DEVICE_CTX	= 1ULL << 15,
 };
 
 struct ib_exp_device_attr {
@@ -131,6 +151,9 @@ struct ib_exp_device_attr {
 	struct ib_exp_odp_caps	odp_caps;
 	uint32_t		max_dct;
 	uint32_t		max_ctx_res_domain;
+	struct ib_exp_rx_hash_caps	rx_hash_caps;
+	uint32_t		max_wq_type_rq;
+	uint32_t                max_device_ctx;
 };
 
 struct ib_exp_qp_init_attr {
@@ -151,6 +174,7 @@ struct ib_exp_qp_init_attr {
 	enum ib_qpg_type	qpg_type;
 	u8			port_num; /* special QP types only */
 	u32			max_inl_recv;
+	struct ib_rx_hash_conf	*rx_hash_conf;
 };
 
 

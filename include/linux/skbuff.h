@@ -10,4 +10,10 @@ static inline unsigned char *skb_pull_inline(struct sk_buff *skb, unsigned int l
 }
 #endif /* HAVE_SKB_PULL_INLINE */
 
+#ifndef SKB_TRUESIZE
+#define SKB_TRUESIZE(X) ((X) +						\
+			SKB_DATA_ALIGN(sizeof(struct sk_buff)) +	\
+			SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+#endif
+
 #endif /* _COMPAT_LINUX_SKBUFF_H */

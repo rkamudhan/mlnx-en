@@ -857,6 +857,7 @@ static int parse_trans_rule(struct mlx4_dev *dev, struct mlx4_spec_list *spec,
 	rule_hw->id = cpu_to_be16(__sw_id_hw[spec->id]);
 	rule_hw->size = mlx4_hw_rule_sz(dev, spec->id) >> 2;
 
+
 	switch (spec->id) {
 	case MLX4_NET_TRANS_RULE_ID_ETH:
 		memcpy(rule_hw->eth.dst_mac, spec->eth.dst_mac, ETH_ALEN);
@@ -875,7 +876,7 @@ static int parse_trans_rule(struct mlx4_dev *dev, struct mlx4_spec_list *spec,
 
 	case MLX4_NET_TRANS_RULE_ID_IB:
 		rule_hw->ib.l3_qpn = spec->ib.l3_qpn |
-			(spec->ib.roce_type == MLX4_FLOW_SPEC_IB_ROCE_TYPE_IPV4 ? 0x80 : 0);
+				     cpu_to_be32((spec->ib.roce_type == MLX4_FLOW_SPEC_IB_ROCE_TYPE_IPV4 ? 0x80 : 0) << 24);
 		rule_hw->ib.qpn_mask = spec->ib.qpn_msk;
 		memcpy(&rule_hw->ib.dst_gid, &spec->ib.dst_gid, 16);
 		memcpy(&rule_hw->ib.dst_gid_msk, &spec->ib.dst_gid_msk, 16);
@@ -1172,11 +1173,9 @@ int mlx4_qp_attach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 			goto out;
 		}
 
-	if (block_mcast_loopback)
-		mgm->qp[members_count++] = cpu_to_be32((qp->qpn & MGM_QPN_MASK) |
-						       (1U << MGM_BLCK_LB_BIT));
-	else
-		mgm->qp[members_count++] = cpu_to_be32(qp->qpn & MGM_QPN_MASK);
+	mgm->qp[members_count++] = cpu_to_be32((qp->qpn & MGM_QPN_MASK) |
+					       (((mlx4_blck_lb || block_mcast_loopback) ? 1U : 0)
+					        << MGM_BLCK_LB_BIT));
 
 	mgm->members_count = cpu_to_be32(members_count | (u32) prot << 30);
 

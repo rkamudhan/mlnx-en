@@ -31,6 +31,7 @@
  */
 
 #include "en.h"
+#include <linux/irq.h>
 
 void mlx5e_prefetch_cqe(struct mlx5e_cq *cq)
 {
@@ -58,6 +59,22 @@ struct mlx5_cqe64 *mlx5e_get_cqe(struct mlx5e_cq *cq)
 	return cqe;
 }
 
+static inline bool mlx5e_no_channel_affinity_change(struct mlx5e_channel *c)
+{
+#if defined(HAVE_IRQ_DESC_GET_IRQ_DATA) && defined(HAVE_IRQ_TO_DESC_EXPORTED)
+	int current_cpu = smp_processor_id();
+	struct cpumask *aff = irq_desc_get_irq_data(c->irq_desc)->affinity;
+
+	return cpumask_test_cpu(current_cpu, aff);
+#else
+	if (c->tot_rx < MLX5_EN_MIN_RX_ARM)
+		return true;
+
+	c->tot_rx = 0;
+	return false;
+#endif
+}
+
 int mlx5e_napi_poll(struct napi_struct *napi, int budget)
 {
 	struct mlx5e_channel *c = container_of(napi, struct mlx5e_channel,
@@ -74,7 +91,10 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
 	for (i = 0; i < c->num_tc; i++)
 		busy |= mlx5e_poll_tx_cq(&c->sq[i].cq);
 
-	if (busy)
+#if !(defined(HAVE_IRQ_DESC_GET_IRQ_DATA) && defined(HAVE_IRQ_TO_DESC_EXPORTED))
+	c->tot_rx += budget;
+#endif
+	if (busy && likely(mlx5e_no_channel_affinity_change(c)))
 		return budget;
 
 	napi_complete(napi);

@@ -247,7 +247,6 @@ static int mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
 
 static inline bool mlx4_en_is_ring_empty(struct mlx4_en_rx_ring *ring)
 {
-	BUG_ON((u32)(ring->prod - ring->cons) > ring->actual_size);
 	return ring->prod == ring->cons;
 }
 
@@ -380,11 +379,7 @@ static int mlx4_en_get_frag_hdr(struct skb_frag_struct *frags, void **mac_hdr,
 				   void **ip_hdr, void **tcpudp_hdr,
 				   u64 *hdr_flags, void *priv)
 {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0))
-	*mac_hdr = page_address(frags->page) + frags->page_offset;
-#else
 	*mac_hdr = page_address(skb_frag_page(frags)) + frags->page_offset;
-#endif
 	*ip_hdr = *mac_hdr + ETH_HLEN;
 	*tcpudp_hdr = (struct tcphdr *)(*ip_hdr + sizeof(struct iphdr));
 	*hdr_flags = LRO_IPV4 | LRO_TCP;
@@ -781,26 +776,46 @@ static void get_fixed_ipv4_csum(__wsum hw_checksum, struct sk_buff *skb,
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
-/* In IPv6 packets, besides subtracting the pseudo header checksum,
- * we also compute/add the IP header checksum which
- * is not added by the HW.
- */
+static __wsum csum_ipv6_magic_nofold(const struct in6_addr *saddr,
+				     const struct in6_addr *daddr,
+				     __u32 len, unsigned short proto)
+{
+	__wsum res = 0;
+
+	res = csum_add(res, saddr->in6_u.u6_addr32[0]);
+	res = csum_add(res, saddr->in6_u.u6_addr32[1]);
+	res = csum_add(res, saddr->in6_u.u6_addr32[2]);
+	res = csum_add(res, saddr->in6_u.u6_addr32[3]);
+	res = csum_add(res, daddr->in6_u.u6_addr32[0]);
+	res = csum_add(res, daddr->in6_u.u6_addr32[1]);
+	res = csum_add(res, daddr->in6_u.u6_addr32[2]);
+	res = csum_add(res, daddr->in6_u.u6_addr32[3]);
+	res = csum_add(res, len);
+	res = csum_add(res, htonl(proto));
+
+	return res;
+}
+
 static int get_fixed_ipv6_csum(__wsum hw_checksum, struct sk_buff *skb,
 			       struct ipv6hdr *ipv6h)
 {
-	__wsum csum_pseudo_hdr = 0;
+	__wsum csum_pseudo_header = 0;
 
-	if (ipv6h->nexthdr == IPPROTO_FRAGMENT || ipv6h->nexthdr == IPPROTO_HOPOPTS)
+	if (ipv6h->nexthdr == IPPROTO_FRAGMENT ||
+	    ipv6h->nexthdr == IPPROTO_HOPOPTS)
 		return -1;
-	hw_checksum = csum_add(hw_checksum, (__force __wsum)(ipv6h->nexthdr << 8));
 
-	csum_pseudo_hdr = csum_partial(&ipv6h->saddr,
-				       sizeof(ipv6h->saddr) + sizeof(ipv6h->daddr), 0);
-	csum_pseudo_hdr = csum_add(csum_pseudo_hdr, (__force __wsum)ipv6h->payload_len);
-	csum_pseudo_hdr = csum_add(csum_pseudo_hdr, (__force __wsum)ntohs(ipv6h->nexthdr));
+	hw_checksum = csum_add(hw_checksum, cpu_to_be16(ipv6h->nexthdr));
+	csum_pseudo_header = csum_ipv6_magic_nofold(&ipv6h->saddr,
+						    &ipv6h->daddr,
+						    ipv6h->payload_len,
+						    ipv6h->nexthdr);
+	hw_checksum = csum_sub(hw_checksum, csum_pseudo_header);
+	hw_checksum = csum_partial(ipv6h, sizeof(struct ipv6hdr), hw_checksum);
+	if (!hw_checksum)
+		return -1;
 
-	skb->csum = csum_sub(hw_checksum, csum_pseudo_hdr);
-	skb->csum = csum_add(skb->csum, csum_partial(ipv6h, sizeof(struct ipv6hdr), 0));
+	skb->csum = hw_checksum;
 	return 0;
 }
 #endif
@@ -944,8 +959,8 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 
 			if (is_multicast_ether_addr(ethh->h_dest)) {
 				struct mlx4_mac_entry *entry;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
-				struct hlist_node *n;
+#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
+				struct hlist_node *hlnode;
 #endif
 				struct hlist_head *bucket;
 				unsigned int mac_hash;
@@ -954,11 +969,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 				mac_hash = ethh->h_source[MLX4_EN_MAC_HASH_IDX];
 				bucket = &priv->mac_hash[mac_hash];
 				rcu_read_lock();
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
-				hlist_for_each_entry_rcu(entry, n, bucket, hlist) {
-#else
-				hlist_for_each_entry_rcu(entry, bucket, hlist) {
-#endif
+				compat_hlist_for_each_entry_rcu(entry, bucket, hlist) {
 					if (ether_addr_equal_64bits(entry->mac,
 								    ethh->h_source)) {
 						rcu_read_unlock();
@@ -996,7 +1007,8 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					    !l2_tunnel &&
 #endif
 					    !(be32_to_cpu(cqe->vlan_my_qpn) &
-					      MLX4_CQE_VLAN_PRESENT_MASK)) {
+					      (MLX4_CQE_CVLAN_PRESENT_MASK |
+					       MLX4_CQE_SVLAN_PRESENT_MASK))) {
 						int truesize = 0;
 						struct skb_frag_struct lro_frag[MLX4_EN_MAX_RX_FRAGS];
 
@@ -1045,7 +1057,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 #endif
 #ifdef HAVE_VLAN_GRO_RECEIVE
 		    && (!(be32_to_cpu(cqe->vlan_my_qpn) &
-			MLX4_CQE_VLAN_PRESENT_MASK))
+			MLX4_CQE_CVLAN_PRESENT_MASK))
 #endif
 		   ) {
 			struct sk_buff *gro_skb = napi_get_frags(&cq->napi);
@@ -1082,14 +1094,22 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 #endif
 
 			if ((cqe->vlan_my_qpn &
-			    cpu_to_be32(MLX4_CQE_VLAN_PRESENT_MASK)) &&
+			    cpu_to_be32(MLX4_CQE_CVLAN_PRESENT_MASK)) &&
 			    (dev->features & NETIF_F_HW_VLAN_CTAG_RX)) {
 				u16 vid = be16_to_cpu(cqe->sl_vid);
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
+#ifndef HAVE_3_PARAMS_FOR_VLAN_HWACCEL_PUT_TAG
 				__vlan_hwaccel_put_tag(gro_skb, vid);
 #else
 				__vlan_hwaccel_put_tag(gro_skb, htons(ETH_P_8021Q), vid);
+#endif
+#ifdef HAVE_NETIF_F_HW_VLAN_STAG_RX
+			} else if ((be32_to_cpu(cqe->vlan_my_qpn) &
+				  MLX4_CQE_SVLAN_PRESENT_MASK) &&
+				 (dev->features & NETIF_F_HW_VLAN_STAG_RX)) {
+				__vlan_hwaccel_put_tag(gro_skb,
+						       htons(ETH_P_8021AD),
+						       be16_to_cpu(cqe->sl_vid));
 #endif
 			}
 
@@ -1166,7 +1186,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 #endif
 
 		if ((be32_to_cpu(cqe->vlan_my_qpn) &
-		    MLX4_CQE_VLAN_PRESENT_MASK) &&
+		    MLX4_CQE_CVLAN_PRESENT_MASK) &&
 		    (dev->features & NETIF_F_HW_VLAN_CTAG_RX)) {
 #ifdef HAVE_VLAN_GRO_RECEIVE
 			if (priv->vlgrp) {
@@ -1176,10 +1196,17 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 				goto next;
 			}
 #endif
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
+#ifndef HAVE_3_PARAMS_FOR_VLAN_HWACCEL_PUT_TAG
 			__vlan_hwaccel_put_tag(skb, be16_to_cpu(cqe->sl_vid));
 #else
 			__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), be16_to_cpu(cqe->sl_vid));
+#endif
+#ifdef HAVE_NETIF_F_HW_VLAN_STAG_RX
+		} else if ((be32_to_cpu(cqe->vlan_my_qpn) &
+			  MLX4_CQE_SVLAN_PRESENT_MASK) &&
+			 (dev->features & NETIF_F_HW_VLAN_STAG_RX)) {
+			__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021AD),
+					       be16_to_cpu(cqe->sl_vid));
 #endif
 		}
 
@@ -1312,7 +1339,10 @@ static const int frag_sizes[] = {
 void mlx4_en_calc_rx_buf(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
-	int eff_mtu = dev->mtu + ETH_HLEN + VLAN_HLEN;
+	/* VLAN_HLEN is added twice,to support skb vlan tagged with multiple
+	 * headers. (For example: ETH_P_8021Q and ETH_P_8021AD).
+	 */
+	int eff_mtu = dev->mtu + ETH_HLEN + (2 * VLAN_HLEN);
 	int buf_size = 0;
 	int i = 0;
 
@@ -1512,8 +1542,15 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	rss_context->hash_fn = MLX4_RSS_HASH_TOP;
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 	if (priv->rss_hash_fn == ETH_RSS_HASH_XOR) {
+#else
+	if (priv->pflags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR) {
+#endif
 		rss_context->hash_fn = MLX4_RSS_HASH_XOR;
+#ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 	} else if (priv->rss_hash_fn == ETH_RSS_HASH_TOP) {
+#else
+	} else if (!(priv->pflags & MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR)) {
+#endif
 		rss_context->hash_fn = MLX4_RSS_HASH_TOP;
 		memcpy(rss_context->rss_key, priv->rss_key,
 		       MLX4_EN_RSS_KEY_SIZE);
@@ -1529,14 +1566,7 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 		err = -EINVAL;
 		goto indir_err;
 	}
-#else
-#ifndef HAVE_NETDEV_RSS_KEY_FILL
-	for (i = 0; i < MLX4_EN_RSS_KEY_SIZE; i++)
-		rss_context->rss_key[i] = cpu_to_be32(rsskey[i]);
-#else
-	memcpy(rss_context->rss_key, priv->rss_key, MLX4_EN_RSS_KEY_SIZE);
-#endif
-#endif
+
 	err = mlx4_qp_to_ready(mdev->dev, &priv->res.mtt, &context,
 			       &rss_map->indir_qp, &rss_map->indir_state);
 	if (err)

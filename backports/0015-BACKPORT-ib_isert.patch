@@ -4,19 +4,40 @@ Subject: [PATCH] BACKPORT: ib_isert
 Change-Id: I1799473e4814f3b2e8d7ce73dad987d76a04be06
 Signed-off-by: Max Gurtovoy <maxg@mellanox.com>
 ---
- drivers/infiniband/ulp/isert/ib_isert.c  |  332 ++++++++++++++++++++++++++++++
- drivers/infiniband/ulp/isert/ib_isert.h  |    4 +
- drivers/target/iscsi/iscsi_target_core.h |   72 +++++++
- include/target/iscsi/iscsi_transport.h   |   29 +++
- 4 files changed, 437 insertions(+), 0 deletions(-)
+ drivers/infiniband/ulp/isert/debian/changelog |   2 +-
+ drivers/infiniband/ulp/isert/ib_isert.c       | 404 +++++++++++++++++++++++++-
+ drivers/infiniband/ulp/isert/ib_isert.h       |   8 +
+ drivers/target/iscsi/iscsi_target_core.h      |  72 +++++
+ include/target/iscsi/iscsi_transport.h        |  29 ++
+ 5 files changed, 504 insertions(+), 11 deletions(-)
 
-diff --git a/drivers/infiniband/ulp/isert/ib_isert.c b/drivers/infiniband/ulp/isert/ib_isert.c
-index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/infiniband/ulp/isert/debian/changelog
++++ b/drivers/infiniband/ulp/isert/debian/changelog
+@@ -1,4 +1,4 @@
+-isert (0.0-0) unstable; urgency=low
++isert (1.0-0) unstable; urgency=low
+ 
+   * Initial release.
+ 
 --- a/drivers/infiniband/ulp/isert/ib_isert.c
 +++ b/drivers/infiniband/ulp/isert/ib_isert.c
-@@ -46,6 +46,9 @@ static DEFINE_MUTEX(device_list_mutex);
+@@ -26,7 +26,7 @@
+ #include <rdma/rdma_cm.h>
+ #include <target/target_core_base.h>
+ #include <target/target_core_fabric.h>
+-#include <target/iscsi/iscsi_transport.h>
++#include "target/iscsi/iscsi_transport.h"
+ #include <linux/semaphore.h>
+ 
+ #include "isert_proto.h"
+@@ -45,7 +45,14 @@ MODULE_PARM_DESC(debug_level, "Enable de
+ static DEFINE_MUTEX(device_list_mutex);
  static LIST_HEAD(device_list);
  static struct workqueue_struct *isert_comp_wq;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++static DEFINE_MUTEX(connected_list_mutex);
++static LIST_HEAD(connected_list);
++#endif
  static struct workqueue_struct *isert_release_wq;
 +#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
 +static struct kmem_cache *isert_cmd_cache;
@@ -24,7 +45,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static void
  isert_unmap_cmd(struct isert_cmd *isert_cmd, struct isert_conn *isert_conn);
-@@ -68,8 +71,12 @@ struct rdma_cm_id *isert_setup_id(struct isert_np *isert_np);
+@@ -70,8 +77,12 @@ static void isert_release_work(struct wo
  static inline bool
  isert_prot_cmd(struct isert_conn *conn, struct se_cmd *cmd)
  {
@@ -37,15 +58,15 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  
-@@ -429,6 +436,7 @@ isert_conn_free_fastreg_pool(struct isert_conn *isert_conn)
- 			isert_conn->conn_fr_pool_size - i);
+@@ -496,6 +507,7 @@ isert_conn_free_fastreg_pool(struct iser
+ 			isert_conn->fr_pool_size - i);
  }
  
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
  static int
  isert_create_pi_ctx(struct fast_reg_descriptor *desc,
  		    struct ib_device *device,
-@@ -488,6 +496,7 @@ err_pi_ctx:
+@@ -555,6 +567,7 @@ err_pi_ctx:
  
  	return ret;
  }
@@ -53,65 +74,85 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static int
  isert_create_fr_desc(struct ib_device *ib_device, struct ib_pd *pd,
-@@ -579,6 +588,7 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
- 	struct ib_device *ib_dev = cma_id->device;
+@@ -649,6 +662,9 @@ isert_init_conn(struct isert_conn *isert
+ 	spin_lock_init(&isert_conn->pool_lock);
+ 	INIT_LIST_HEAD(&isert_conn->fr_pool);
+ 	INIT_WORK(&isert_conn->release_work, isert_release_work);
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++	INIT_LIST_HEAD(&isert_conn->conn_node);
++#endif
+ }
+ 
+ static void
+@@ -726,6 +742,7 @@ isert_connect_request(struct rdma_cm_id
+ 	struct isert_device *device;
  	int ret = 0;
  
 +#if defined(CONFIG_COMPAT_RHEL_7_1) || defined(CONFIG_COMPAT_SLES_12_0) || defined(CONFIG_COMPAT_FBK_16) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
  	spin_lock_bh(&np->np_thread_lock);
  	if (!np->enabled) {
  		spin_unlock_bh(&np->np_thread_lock);
-@@ -586,6 +596,7 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
- 		return rdma_reject(cma_id, NULL, 0);
+@@ -734,6 +751,7 @@ isert_connect_request(struct rdma_cm_id
  	}
  	spin_unlock_bh(&np->np_thread_lock);
-+#endif
  
++#endif
  	isert_dbg("cma_id: %p, portal: %p\n",
  		 cma_id, cma_id->context);
-@@ -1184,13 +1195,35 @@ isert_rx_login_req(struct isert_conn *isert_conn)
+ 
+@@ -801,6 +819,11 @@ isert_connect_release(struct isert_conn
+ 
+ 	BUG_ON(!device);
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++	mutex_lock(&connected_list_mutex);
++	list_del_init(&isert_conn->conn_node);
++	mutex_unlock(&connected_list_mutex);
++#endif
+ 	if (device->use_fastreg)
+ 		isert_conn_free_fastreg_pool(isert_conn);
+ 
+@@ -1290,13 +1313,33 @@ isert_rx_login_req(struct isert_conn *is
  		  MAX_KEY_VALUE_PAIRS);
  	memcpy(login->req_buf, &rx_desc->data[0], size);
  
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  	if (login->first_request) {
- 		complete(&isert_conn->conn_login_comp);
+ 		complete(&isert_conn->login_comp);
  		return;
  	}
  	schedule_delayed_work(&conn->login_work, 0);
 +#else
-+	complete(&isert_conn->conn_login_comp);
++	complete(&isert_conn->login_comp);
 +#endif
  }
  
-+
 +#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
 +static void
 +isert_release_cmd(struct iscsi_cmd *cmd)
 +{
-+        struct isert_cmd *isert_cmd = container_of(cmd, struct isert_cmd,
-+                                                   iscsi_cmd);
++	struct isert_cmd *isert_cmd = container_of(cmd, struct isert_cmd,
++                                iscsi_cmd);
++	pr_debug("Entering isert_release_cmd %p >>>>>>>>>>>>>>>.\n", isert_cmd);
 +
-+        pr_debug("Entering isert_release_cmd %p >>>>>>>>>>>>>>>.\n", isert_cmd);
++	kfree(cmd->buf_ptr);
++	kfree(cmd->tmr_req);
 +
-+        kfree(cmd->buf_ptr);
-+        kfree(cmd->tmr_req);
-+
-+        kmem_cache_free(isert_cmd_cache, isert_cmd);
++	kmem_cache_free(isert_cmd_cache, isert_cmd);
 +}
 +#endif
 +
 +#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
  static struct iscsi_cmd
- *isert_allocate_cmd(struct iscsi_conn *conn)
+ *isert_allocate_cmd(struct iscsi_conn *conn, struct iser_rx_desc *rx_desc)
  {
-@@ -1209,6 +1242,43 @@ static struct iscsi_cmd
+@@ -1316,6 +1359,44 @@ static struct iscsi_cmd
  
  	return cmd;
  }
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
 +static struct iscsi_cmd
-+*isert_allocate_cmd(struct iscsi_conn *conn, gfp_t gfp)
++*isert_allocate_cmd(struct iscsi_conn *conn, struct iser_rx_desc *rx_desc, gfp_t gfp)
 +{
 +	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
 +	struct isert_cmd *isert_cmd;
@@ -125,6 +166,7 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	isert_cmd = iscsit_priv_cmd(cmd);
 +	isert_cmd->conn = isert_conn;
 +	isert_cmd->iscsi_cmd = cmd;
++	isert_cmd->rx_desc = rx_desc;
 +
 +	return cmd;
 +}
@@ -149,7 +191,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static int
  isert_handle_scsi_cmd(struct isert_conn *isert_conn,
-@@ -1324,6 +1394,7 @@ isert_handle_iscsi_dataout(struct isert_conn *isert_conn,
+@@ -1451,6 +1532,7 @@ isert_handle_iscsi_dataout(struct isert_
  	return 0;
  }
  
@@ -157,11 +199,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int
  isert_handle_nop_out(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
  		     struct iscsi_cmd *cmd, struct iser_rx_desc *rx_desc,
-@@ -1342,7 +1413,29 @@ isert_handle_nop_out(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
+@@ -1469,7 +1551,28 @@ isert_handle_nop_out(struct isert_conn *
  
  	return iscsit_process_nop_out(conn, cmd, hdr);
  }
-+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#elif defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 +static int
 +isert_handle_nop_out(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
 +		     struct iser_rx_desc *rx_desc, unsigned char *buf)
@@ -182,16 +224,15 @@ index xxxxxxx..xxxxxxx xxxxxx
 +}
 +#endif
 +
-+
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  static int
  isert_handle_text_cmd(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
  		      struct iscsi_cmd *cmd, struct iser_rx_desc *rx_desc,
-@@ -1369,6 +1462,35 @@ isert_handle_text_cmd(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd
+@@ -1498,6 +1601,35 @@ isert_handle_text_cmd(struct isert_conn
  
  	return iscsit_process_text_cmd(conn, cmd, hdr);
  }
-+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#elif defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 +static int
 +isert_handle_text_cmd(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd,
 +		      struct iser_rx_desc *rx_desc,
@@ -223,52 +264,57 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static int
  isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
-@@ -1392,11 +1514,21 @@ isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
+@@ -1520,11 +1652,21 @@ isert_rx_opcode(struct isert_conn *isert
  
  	switch (opcode) {
  	case ISCSI_OP_SCSI_CMD:
 +#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
- 		cmd = isert_allocate_cmd(conn);
+ 		cmd = isert_allocate_cmd(conn, rx_desc);
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
-+		cmd = isert_allocate_cmd(conn, GFP_KERNEL);
++		cmd = isert_allocate_cmd(conn, rx_desc, GFP_KERNEL);
 +#else
 +		cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 +#endif
  		if (!cmd)
  			break;
- 
+-
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  		isert_cmd = iscsit_priv_cmd(cmd);
 +#else
 +		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++		isert_cmd->rx_desc = rx_desc;
 +#endif
  		isert_cmd->read_stag = read_stag;
  		isert_cmd->read_va = read_va;
  		isert_cmd->write_stag = write_stag;
-@@ -1406,20 +1538,40 @@ isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
+@@ -1534,20 +1676,43 @@ isert_rx_opcode(struct isert_conn *isert
  					rx_desc, (unsigned char *)hdr);
  		break;
  	case ISCSI_OP_NOOP_OUT:
 +#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
- 		cmd = isert_allocate_cmd(conn);
+ 		cmd = isert_allocate_cmd(conn, rx_desc);
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
-+		cmd = isert_allocate_cmd(conn, GFP_KERNEL);
++		cmd = isert_allocate_cmd(conn, rx_desc, GFP_KERNEL);
 +#else
 +		cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 +#endif
  		if (!cmd)
  			break;
- 
+-
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  		isert_cmd = iscsit_priv_cmd(cmd);
  		ret = isert_handle_nop_out(isert_conn, isert_cmd, cmd,
  					   rx_desc, (unsigned char *)hdr);
-+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#elif defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 +		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++		isert_cmd->rx_desc = rx_desc;
 +		ret = isert_handle_nop_out(isert_conn, isert_cmd,
 +					   rx_desc, (unsigned char *)hdr);
 +#else
++		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++		isert_cmd->rx_desc = rx_desc;
 +		ret = iscsit_handle_nop_out(conn, cmd, (unsigned char *)hdr);
++
 +#endif
  		break;
  	case ISCSI_OP_SCSI_DATA_OUT:
@@ -277,36 +323,45 @@ index xxxxxxx..xxxxxxx xxxxxx
  		break;
  	case ISCSI_OP_SCSI_TMFUNC:
 +#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
- 		cmd = isert_allocate_cmd(conn);
+ 		cmd = isert_allocate_cmd(conn, rx_desc);
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
-+		cmd = isert_allocate_cmd(conn, GFP_KERNEL);
++		cmd = isert_allocate_cmd(conn, rx_desc, GFP_KERNEL);
 +#else
 +		cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 +#endif
  		if (!cmd)
  			break;
  
-@@ -1427,20 +1579,38 @@ isert_rx_opcode(struct isert_conn *isert_conn, struct iser_rx_desc *rx_desc,
+@@ -1555,23 +1720,51 @@ isert_rx_opcode(struct isert_conn *isert
  						(unsigned char *)hdr);
  		break;
  	case ISCSI_OP_LOGOUT:
 +#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
- 		cmd = isert_allocate_cmd(conn);
+ 		cmd = isert_allocate_cmd(conn, rx_desc);
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
-+		cmd = isert_allocate_cmd(conn, GFP_KERNEL);
++		cmd = isert_allocate_cmd(conn, rx_desc, GFP_KERNEL);
 +#else
 +		cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 +#endif
  		if (!cmd)
  			break;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
++		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++                isert_cmd->rx_desc = rx_desc;
++#endif
  
  		ret = iscsit_handle_logout_cmd(conn, cmd, (unsigned char *)hdr);
  		break;
  	case ISCSI_OP_TEXT:
-+#if defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
- 		cmd = isert_allocate_cmd(conn);
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+ 		if (be32_to_cpu(hdr->ttt) != 0xFFFFFFFF)
+ 			cmd = iscsit_find_cmd_from_itt(conn, hdr->itt);
+ 		else
+ 			cmd = isert_allocate_cmd(conn, rx_desc);
++#elif defined(CONFIG_COMPAT_SLES_12_0) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0))
++		cmd = isert_allocate_cmd(conn, rx_desc);
 +#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
-+		cmd = isert_allocate_cmd(conn, GFP_KERNEL);
++		cmd = isert_allocate_cmd(conn, rx_desc, GFP_KERNEL);
 +#else
 +		cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 +#endif
@@ -317,15 +372,19 @@ index xxxxxxx..xxxxxxx xxxxxx
  		isert_cmd = iscsit_priv_cmd(cmd);
  		ret = isert_handle_text_cmd(isert_conn, isert_cmd, cmd,
  					    rx_desc, (struct iscsi_text *)hdr);
-+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#elif defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 +		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++		isert_cmd->rx_desc = rx_desc;
 +		ret = isert_handle_text_cmd(isert_conn, isert_cmd,
 +					    rx_desc, (struct iscsi_text *)hdr);
++#else
++		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++		isert_cmd->rx_desc = rx_desc;
 +#endif
  		break;
  	default:
  		isert_err("Got unknown iSCSI OpCode: 0x%02x\n", opcode);
-@@ -1654,7 +1824,11 @@ isert_unreg_rdma(struct isert_cmd *isert_cmd, struct isert_conn *isert_conn)
+@@ -1771,12 +1964,17 @@ isert_unreg_rdma(struct isert_cmd *isert
  static void
  isert_put_cmd(struct isert_cmd *isert_cmd, bool comp_err)
  {
@@ -336,8 +395,29 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	struct isert_conn *isert_conn = isert_cmd->conn;
  	struct iscsi_conn *conn = isert_conn->conn;
- 	struct isert_device *device = isert_conn->conn_device;
-@@ -1719,7 +1893,11 @@ isert_put_cmd(struct isert_cmd *isert_cmd, bool comp_err)
+ 	struct isert_device *device = isert_conn->device;
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+ 	struct iscsi_text_rsp *hdr;
+-
++#endif
+ 	isert_dbg("Cmd %p\n", isert_cmd);
+ 
+ 	switch (cmd->iscsi_opcode) {
+@@ -1816,11 +2014,12 @@ isert_put_cmd(struct isert_cmd *isert_cm
+ 	case ISCSI_OP_REJECT:
+ 	case ISCSI_OP_NOOP_OUT:
+ 	case ISCSI_OP_TEXT:
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+ 		hdr = (struct iscsi_text_rsp *)&isert_cmd->tx_desc.iscsi_header;
+ 		/* If the continue bit is on, keep the command alive */
+ 		if (hdr->flags & ISCSI_FLAG_TEXT_CONTINUE)
+ 			break;
+-
++#endif
+ 		spin_lock_bh(&conn->cmd_lock);
+ 		if (!list_empty(&cmd->i_conn_node))
+ 			list_del_init(&cmd->i_conn_node);
+@@ -1841,7 +2040,11 @@ isert_put_cmd(struct isert_cmd *isert_cm
  		 * Fall-through
  		 */
  	default:
@@ -349,7 +429,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		break;
  	}
  }
-@@ -1750,6 +1928,7 @@ isert_completion_put(struct iser_tx_desc *tx_desc, struct isert_cmd *isert_cmd,
+@@ -1872,6 +2075,7 @@ isert_completion_put(struct iser_tx_desc
  	isert_put_cmd(isert_cmd, comp_err);
  }
  
@@ -357,7 +437,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int
  isert_check_pi_status(struct se_cmd *se_cmd, struct ib_mr *sig_mr)
  {
-@@ -1793,16 +1972,24 @@ isert_check_pi_status(struct se_cmd *se_cmd, struct ib_mr *sig_mr)
+@@ -1915,16 +2119,22 @@ isert_check_pi_status(struct se_cmd *se_
  fail_mr_status:
  	return ret;
  }
@@ -370,19 +450,18 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct isert_rdma_wr *wr = &isert_cmd->rdma_wr;
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  	struct iscsi_cmd *cmd = isert_cmd->iscsi_cmd;
+-	struct se_cmd *se_cmd = &cmd->se_cmd;
 +#else
 +	struct iscsi_cmd *cmd = &isert_cmd->iscsi_cmd;
 +#endif
-+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
- 	struct se_cmd *se_cmd = &cmd->se_cmd;
-+#endif
  	struct isert_conn *isert_conn = isert_cmd->conn;
- 	struct isert_device *device = isert_conn->conn_device;
+ 	struct isert_device *device = isert_conn->device;
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
++	struct se_cmd *se_cmd = &cmd->se_cmd;
  	int ret = 0;
  
  	if (wr->fr_desc && wr->fr_desc->ind & ISERT_PROTECTED) {
-@@ -1810,14 +1997,19 @@ isert_completion_rdma_write(struct iser_tx_desc *tx_desc,
+@@ -1932,14 +2142,19 @@ isert_completion_rdma_write(struct iser_
  					    wr->fr_desc->pi_ctx->sig_mr);
  		wr->fr_desc->ind &= ~ISERT_PROTECTED;
  	}
@@ -402,7 +481,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  static void
-@@ -1825,10 +2017,15 @@ isert_completion_rdma_read(struct iser_tx_desc *tx_desc,
+@@ -1947,10 +2162,15 @@ isert_completion_rdma_read(struct iser_t
  			   struct isert_cmd *isert_cmd)
  {
  	struct isert_rdma_wr *wr = &isert_cmd->rdma_wr;
@@ -413,12 +492,12 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	struct se_cmd *se_cmd = &cmd->se_cmd;
  	struct isert_conn *isert_conn = isert_cmd->conn;
- 	struct isert_device *device = isert_conn->conn_device;
+ 	struct isert_device *device = isert_conn->device;
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
  	int ret = 0;
  
  	if (wr->fr_desc && wr->fr_desc->ind & ISERT_PROTECTED) {
-@@ -1836,6 +2033,7 @@ isert_completion_rdma_read(struct iser_tx_desc *tx_desc,
+@@ -1958,6 +2178,7 @@ isert_completion_rdma_read(struct iser_t
  					    wr->fr_desc->pi_ctx->sig_mr);
  		wr->fr_desc->ind &= ~ISERT_PROTECTED;
  	}
@@ -426,35 +505,38 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	iscsit_stop_dataout_timer(cmd);
  	device->unreg_rdma_mem(isert_cmd, isert_conn);
-@@ -1848,11 +2046,15 @@ isert_completion_rdma_read(struct iser_tx_desc *tx_desc,
+@@ -1970,6 +2191,7 @@ isert_completion_rdma_read(struct iser_t
  	cmd->i_state = ISTATE_RECEIVED_LAST_DATAOUT;
  	spin_unlock_bh(&cmd->istate_lock);
  
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
- 	if (ret)
+ 	if (ret) {
+ 		target_put_sess_cmd(se_cmd->se_sess, se_cmd);
  		transport_send_check_condition_and_sense(se_cmd,
- 							 se_cmd->pi_err, 0);
- 	else
+@@ -1977,6 +2199,9 @@ isert_completion_rdma_read(struct iser_t
+ 	} else {
  		target_execute_cmd(se_cmd);
+ 	}
 +#else
 +	target_execute_cmd(se_cmd);
 +#endif
  }
  
  static void
-@@ -1862,7 +2064,11 @@ isert_do_control_comp(struct work_struct *work)
+@@ -1986,8 +2211,11 @@ isert_do_control_comp(struct work_struct
  			struct isert_cmd, comp_work);
  	struct isert_conn *isert_conn = isert_cmd->conn;
- 	struct ib_device *ib_dev = isert_conn->conn_cm_id->device;
+ 	struct ib_device *ib_dev = isert_conn->cm_id->device;
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
  	struct iscsi_cmd *cmd = isert_cmd->iscsi_cmd;
+-
 +#else
 +	struct iscsi_cmd *cmd = &isert_cmd->iscsi_cmd;
 +#endif
- 
  	isert_dbg("Cmd %p i_state %d\n", isert_cmd, cmd->i_state);
  
-@@ -1891,7 +2097,11 @@ isert_response_completion(struct iser_tx_desc *tx_desc,
+ 	switch (cmd->i_state) {
+@@ -2015,7 +2243,11 @@ isert_response_completion(struct iser_tx
  			  struct isert_conn *isert_conn,
  			  struct ib_device *ib_dev)
  {
@@ -466,7 +548,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (cmd->i_state == ISTATE_SEND_TASKMGTRSP ||
  	    cmd->i_state == ISTATE_SEND_LOGOUTRSP ||
-@@ -2069,7 +2279,12 @@ isert_post_response(struct isert_conn *isert_conn, struct isert_cmd *isert_cmd)
+@@ -2195,7 +2427,12 @@ isert_post_response(struct isert_conn *i
  static int
  isert_put_response(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
  {
@@ -476,10 +558,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
  	struct iscsi_scsi_rsp *hdr = (struct iscsi_scsi_rsp *)
-@@ -2114,6 +2329,7 @@ isert_put_response(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
+@@ -2241,6 +2478,7 @@ isert_put_response(struct iscsi_conn *co
  	return isert_post_response(isert_conn, isert_cmd);
  }
  
@@ -487,7 +569,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static void
  isert_aborted_task(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
  {
-@@ -2131,11 +2347,14 @@ isert_aborted_task(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
+@@ -2258,11 +2496,14 @@ isert_aborted_task(struct iscsi_conn *co
  
  	device->unreg_rdma_mem(isert_cmd, isert_conn);
  }
@@ -497,12 +579,12 @@ index xxxxxxx..xxxxxxx xxxxxx
  static enum target_prot_op
  isert_get_sup_prot_ops(struct iscsi_conn *conn)
  {
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0))
- 	struct isert_device *device = isert_conn->conn_device;
+ 	struct isert_device *device = isert_conn->device;
  
  	if (conn->tpg->tpg_attrib.t10_pi) {
-@@ -2145,18 +2364,25 @@ isert_get_sup_prot_ops(struct iscsi_conn *conn)
+@@ -2272,18 +2513,25 @@ isert_get_sup_prot_ops(struct iscsi_conn
  			return TARGET_PROT_ALL;
  		}
  	}
@@ -525,10 +607,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
  
-@@ -2175,7 +2401,12 @@ isert_put_nopin(struct iscsi_cmd *cmd, struct iscsi_conn *conn,
+@@ -2302,7 +2550,12 @@ isert_put_nopin(struct iscsi_cmd *cmd, s
  static int
  isert_put_logout_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
  {
@@ -538,10 +620,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
  
-@@ -2193,7 +2424,12 @@ isert_put_logout_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
+@@ -2320,7 +2573,12 @@ isert_put_logout_rsp(struct iscsi_cmd *c
  static int
  isert_put_tm_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
  {
@@ -551,10 +633,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
  
-@@ -2211,7 +2447,12 @@ isert_put_tm_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
+@@ -2338,7 +2596,12 @@ isert_put_tm_rsp(struct iscsi_cmd *cmd,
  static int
  isert_put_reject(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
  {
@@ -564,10 +646,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
- 	struct ib_device *ib_dev = isert_conn->conn_cm_id->device;
-@@ -2240,10 +2481,16 @@ isert_put_reject(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
+ 	struct isert_device *device = isert_conn->device;
+@@ -2368,10 +2631,16 @@ isert_put_reject(struct iscsi_cmd *cmd,
  	return isert_post_response(isert_conn, isert_cmd);
  }
  
@@ -581,10 +663,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct ib_send_wr *send_wr = &isert_cmd->tx_desc.send_wr;
  	struct iscsi_text_rsp *hdr =
-@@ -2279,13 +2526,18 @@ isert_put_text_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
+@@ -2408,13 +2677,18 @@ isert_put_text_rsp(struct iscsi_cmd *cmd
  
  	return isert_post_response(isert_conn, isert_cmd);
  }
@@ -601,9 +683,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct iscsi_cmd *cmd = &isert_cmd->iscsi_cmd;
 +#endif
  	struct scatterlist *sg_start, *tmp_sg;
- 	struct ib_device *ib_dev = isert_conn->conn_cm_id->device;
- 	u32 sg_off, page_off;
-@@ -2332,7 +2584,12 @@ isert_map_rdma(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
+ 	struct isert_device *device = isert_conn->device;
+ 	struct ib_device *ib_dev = device->ib_device;
+@@ -2465,7 +2739,12 @@ isert_map_rdma(struct iscsi_conn *conn,
  	       struct isert_rdma_wr *wr)
  {
  	struct se_cmd *se_cmd = &cmd->se_cmd;
@@ -613,10 +695,10 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct isert_cmd *isert_cmd = container_of(cmd,
 +					struct isert_cmd, iscsi_cmd);
 +#endif
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
+ 	struct isert_conn *isert_conn = conn->context;
  	struct isert_data_buf *data = &wr->data;
  	struct ib_send_wr *send_wr;
-@@ -2546,6 +2803,7 @@ isert_fast_reg_mr(struct isert_conn *isert_conn,
+@@ -2680,6 +2959,7 @@ isert_fast_reg_mr(struct isert_conn *ise
  	return ret;
  }
  
@@ -624,7 +706,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static inline void
  isert_set_dif_domain(struct se_cmd *se_cmd, struct ib_sig_attrs *sig_attrs,
  		     struct ib_sig_domain *domain)
-@@ -2566,7 +2824,9 @@ isert_set_dif_domain(struct se_cmd *se_cmd, struct ib_sig_attrs *sig_attrs,
+@@ -2700,7 +2980,9 @@ isert_set_dif_domain(struct se_cmd *se_c
  	    se_cmd->prot_type == TARGET_DIF_TYPE2_PROT)
  		domain->sig.dif.ref_remap = true;
  };
@@ -634,7 +716,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int
  isert_set_sig_attrs(struct se_cmd *se_cmd, struct ib_sig_attrs *sig_attrs)
  {
-@@ -2725,13 +2985,19 @@ unmap_prot_cmd:
+@@ -2859,13 +3141,19 @@ unmap_prot_cmd:
  
  	return ret;
  }
@@ -654,7 +736,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct isert_conn *isert_conn = conn->context;
  	struct fast_reg_descriptor *fr_desc = NULL;
  	struct ib_send_wr *send_wr;
-@@ -2764,9 +3030,11 @@ isert_reg_rdma(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
+@@ -2898,9 +3186,11 @@ isert_reg_rdma(struct iscsi_conn *conn,
  		goto unmap_cmd;
  
  	if (isert_prot_cmd(isert_conn, se_cmd)) {
@@ -666,7 +748,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		ib_sg = &wr->ib_sg[SIG];
  	} else {
-@@ -2814,7 +3082,12 @@ static int
+@@ -2948,7 +3238,12 @@ static int
  isert_put_datain(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
  {
  	struct se_cmd *se_cmd = &cmd->se_cmd;
@@ -677,9 +759,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +					struct isert_cmd, iscsi_cmd);
 +#endif
  	struct isert_rdma_wr *wr = &isert_cmd->rdma_wr;
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
- 	struct isert_device *device = isert_conn->conn_device;
-@@ -2864,7 +3137,12 @@ static int
+ 	struct isert_conn *isert_conn = conn->context;
+ 	struct isert_device *device = isert_conn->device;
+@@ -3003,7 +3298,12 @@ static int
  isert_get_dataout(struct iscsi_conn *conn, struct iscsi_cmd *cmd, bool recovery)
  {
  	struct se_cmd *se_cmd = &cmd->se_cmd;
@@ -690,9 +772,23 @@ index xxxxxxx..xxxxxxx xxxxxx
 +					struct isert_cmd, iscsi_cmd);
 +#endif
  	struct isert_rdma_wr *wr = &isert_cmd->rdma_wr;
- 	struct isert_conn *isert_conn = (struct isert_conn *)conn->context;
- 	struct isert_device *device = isert_conn->conn_device;
-@@ -2929,9 +3207,11 @@ isert_response_queue(struct iscsi_conn *conn, struct iscsi_cmd *cmd, int state)
+ 	struct isert_conn *isert_conn = conn->context;
+ 	struct isert_device *device = isert_conn->device;
+@@ -3033,7 +3333,12 @@ static int
+ isert_immediate_queue(struct iscsi_conn *conn, struct iscsi_cmd *cmd, int state)
+ {
+ 	int ret = 0;
+-	struct isert_cmd *isert_cmd = iscsit_priv_cmd(cmd);
++	struct isert_cmd *isert_cmd;
++	#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
++		isert_cmd = iscsit_priv_cmd(cmd);
++	#else
++		isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++	#endif
+ 
+ 	switch (state) {
+ 	case ISTATE_REMOVE:
+@@ -3075,9 +3380,11 @@ isert_response_queue(struct iscsi_conn *
  	case ISTATE_SEND_REJECT:
  		ret = isert_put_reject(cmd, conn);
  		break;
@@ -704,16 +800,47 @@ index xxxxxxx..xxxxxxx xxxxxx
  	case ISTATE_SEND_STATUS:
  		/*
  		 * Special case for sending non GOOD SCSI status from TX thread
-@@ -3262,6 +3542,7 @@ isert_wait4flush(struct isert_conn *isert_conn)
- 	wait_for_completion(&isert_conn->conn_wait_comp_err);
- }
+@@ -3302,6 +3609,11 @@ accept_wait:
+ 	list_del_init(&isert_conn->node);
+ 	mutex_unlock(&isert_np->mutex);
  
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++	mutex_lock(&connected_list_mutex);
++	list_add_tail(&isert_conn->conn_node, &connected_list);
++	mutex_unlock(&connected_list_mutex);
++#endif
+ 	conn->context = isert_conn;
+ 	isert_conn->conn = conn;
+ 
+@@ -3361,7 +3673,6 @@ static void isert_release_work(struct wo
+ 	struct isert_conn *isert_conn = container_of(work,
+ 						     struct isert_conn,
+ 						     release_work);
+-
+ 	isert_info("Starting release conn %p\n", isert_conn);
+ 
+ 	wait_for_completion(&isert_conn->wait);
+@@ -3438,13 +3749,18 @@ isert_put_unsol_pending_cmds(struct iscs
+ 	list_for_each_entry_safe(cmd, tmp, &drop_cmd_list, i_conn_node) {
+ 		list_del_init(&cmd->i_conn_node);
+ 		if (cmd->i_state != ISTATE_REMOVE) {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0))
+ 			struct isert_cmd *isert_cmd = iscsit_priv_cmd(cmd);
++#else
++			struct isert_cmd *isert_cmd = container_of(cmd, struct isert_cmd, iscsi_cmd);
++#endif
+ 
+ 			isert_info("conn %p dropping cmd %p\n", conn, cmd);
+ 			isert_put_cmd(isert_cmd, true);
+ 		}
+ 	}
+ }
 +#if defined(CONFIG_COMPAT_ISCSIT_WAIT_CONN)
  static void isert_wait_conn(struct iscsi_conn *conn)
  {
  	struct isert_conn *isert_conn = conn->context;
-@@ -3287,24 +3568,53 @@ static void isert_wait_conn(struct iscsi_conn *conn)
- 	INIT_WORK(&isert_conn->release_work, isert_release_work);
+@@ -3470,13 +3786,36 @@ static void isert_wait_conn(struct iscsi
+ 
  	queue_work(isert_release_wq, &isert_conn->release_work);
  }
 +#endif /* CONFIG_COMPAT_ISCSIT_WAIT_CONN */
@@ -723,29 +850,33 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct isert_conn *isert_conn = conn->context;
  
 +#if !defined(CONFIG_COMPAT_ISCSIT_WAIT_CONN)
-+	mutex_lock(&isert_conn->conn_mutex);
++	mutex_lock(&isert_conn->mutex);
 +	/*
 +	 * Only wait for conn_wait_comp_err if the isert_conn made it
 +	 * into full feature phase..
 +	 */
 +	if (isert_conn->state == ISER_CONN_INIT) {
-+		mutex_unlock(&isert_conn->conn_mutex);
++		mutex_unlock(&isert_conn->mutex);
 +		goto out;
 +	}
 +	isert_conn_terminate(isert_conn);
-+	mutex_unlock(&isert_conn->conn_mutex);
++	mutex_unlock(&isert_conn->mutex);
 +
-+	isert_wait4cmds(conn);
 +	isert_wait4flush(isert_conn);
++	isert_put_unsol_pending_cmds(conn);
++	isert_wait4cmds(conn);
 +	isert_wait4logout(isert_conn);
 +
-+	INIT_WORK(&isert_conn->release_work, isert_release_work);
 +	queue_work(isert_release_wq, &isert_conn->release_work);
 +out:
++#else
+ 	/* post another beacon request to make sure we are last indeed */
+ 	isert_wait4flush(isert_conn);
 +#endif /* CONFIG_COMPAT_ISCSIT_WAIT_CONN */
+ 
  	isert_put_conn(isert_conn);
  }
- 
+@@ -3484,13 +3823,20 @@ static void isert_free_conn(struct iscsi
  static struct iscsit_transport iser_target_transport = {
  	.name			= "IB/iSER",
  	.transport_type		= ISCSI_INFINIBAND,
@@ -758,15 +889,16 @@ index xxxxxxx..xxxxxxx xxxxxx
  	.iscsit_free_np		= isert_free_np,
 +#if defined(CONFIG_COMPAT_ISCSIT_WAIT_CONN)
  	.iscsit_wait_conn	= isert_wait_conn,
+-	.iscsit_free_conn	= isert_free_conn,
 +#endif /* CONFIG_COMPAT_ISCSIT_WAIT_CONN */
- 	.iscsit_free_conn	= isert_free_conn,
++	.iscsit_free_conn       = isert_free_conn,
 +#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
 +	.iscsit_alloc_cmd       = isert_alloc_cmd,
 +#endif
  	.iscsit_get_login_rx	= isert_get_login_rx,
  	.iscsit_put_login_tx	= isert_put_login_tx,
  	.iscsit_immediate_queue	= isert_immediate_queue,
-@@ -3312,8 +3622,12 @@ static struct iscsit_transport iser_target_transport = {
+@@ -3498,8 +3844,12 @@ static struct iscsit_transport iser_targ
  	.iscsit_get_dataout	= isert_get_dataout,
  	.iscsit_queue_data_in	= isert_put_datain,
  	.iscsit_queue_status	= isert_put_response,
@@ -779,7 +911,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  };
  
  static int __init isert_init(void)
-@@ -3335,11 +3649,26 @@ static int __init isert_init(void)
+@@ -3522,11 +3872,26 @@ static int __init isert_init(void)
  		goto destroy_comp_wq;
  	}
  
@@ -806,21 +938,40 @@ index xxxxxxx..xxxxxxx xxxxxx
  destroy_comp_wq:
  	destroy_workqueue(isert_comp_wq);
  
-@@ -3348,6 +3677,9 @@ destroy_comp_wq:
+@@ -3535,11 +3900,30 @@ destroy_comp_wq:
  
  static void __exit isert_exit(void)
  {
++	struct isert_conn *isert_conn, *tmp_conn;
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++	LIST_HEAD(release_list);
++#endif
++
 +#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
 +	kmem_cache_destroy(isert_cmd_cache);
 +#endif
  	flush_scheduled_work();
  	destroy_workqueue(isert_release_wq);
  	destroy_workqueue(isert_comp_wq);
-diff --git a/drivers/infiniband/ulp/isert/ib_isert.h b/drivers/infiniband/ulp/isert/ib_isert.h
-index xxxxxxx..xxxxxxx xxxxxx
+ 	iscsit_unregister_transport(&iser_target_transport);
++
+ 	isert_info("iSER_TARGET[0] - Released iser_target_transport\n");
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
++	list_for_each_entry_safe(isert_conn, tmp_conn, &connected_list, conn_node)
++		list_add_tail(&isert_conn->release_node, &release_list);
++
++	list_for_each_entry(isert_conn, &release_list, release_node)
++		isert_connect_release(isert_conn);
++	isert_info("iSER_TARGET[0] - Exit module\n");
++#endif
+ }
+ 
+ MODULE_DESCRIPTION("iSER-Target for mainline target infrastructure");
 --- a/drivers/infiniband/ulp/isert/ib_isert.h
 +++ b/drivers/infiniband/ulp/isert/ib_isert.h
-@@ -139,7 +139,11 @@ struct isert_cmd {
+@@ -138,7 +138,11 @@ struct isert_cmd {
  	u32			write_va_off;
  	u32			rdma_wr_num;
  	struct isert_conn	*conn;
@@ -830,10 +981,19 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	struct iscsi_cmd	iscsi_cmd;
 +#endif
  	struct iser_tx_desc	tx_desc;
+ 	struct iser_rx_desc	*rx_desc;
  	struct isert_rdma_wr	rdma_wr;
- 	struct work_struct	comp_work;
-diff --git a/drivers/target/iscsi/iscsi_target_core.h b/drivers/target/iscsi/iscsi_target_core.h
-index xxxxxxx..xxxxxxx xxxxxx
+@@ -182,6 +186,10 @@ struct isert_conn {
+ 	struct work_struct	release_work;
+ 	struct ib_recv_wr       beacon;
+ 	bool                    logout_posted;
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4,0,0))
++	struct list_head	conn_node;
++	struct list_head	release_node;
++#endif
+ };
+ 
+ #define ISERT_MAX_CQ 64
 --- a/drivers/target/iscsi/iscsi_target_core.h
 +++ b/drivers/target/iscsi/iscsi_target_core.h
 @@ -37,6 +37,9 @@
@@ -862,7 +1022,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	u32			tx_size;
  	/* Buffer used for various purposes */
  	void			*buf_ptr;
-+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
  	/* Used by SendTargets=[iqn.,eui.] discovery */
  	void			*text_in_ptr;
 +#endif
@@ -1070,8 +1230,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  struct iscsit_global {
  	/* In core shutdown */
  	u32			in_shutdown;
-diff --git a/include/target/iscsi/iscsi_transport.h b/include/target/iscsi/iscsi_transport.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/include/target/iscsi/iscsi_transport.h
 +++ b/include/target/iscsi/iscsi_transport.h
 @@ -6,14 +6,21 @@ struct iscsit_transport {
@@ -1117,7 +1275,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  /*
   * From iscsi_target_transport.c
-@@ -42,6 +55,10 @@ extern void iscsit_put_transport(struct iscsit_transport *);
+@@ -42,6 +55,10 @@ extern void iscsit_put_transport(struct
  /*
   * From iscsi_target.c
   */
@@ -1128,15 +1286,15 @@ index xxxxxxx..xxxxxxx xxxxxx
  extern int iscsit_setup_scsi_cmd(struct iscsi_conn *, struct iscsi_cmd *,
  				unsigned char *);
  extern void iscsit_set_unsoliticed_dataout(struct iscsi_cmd *);
-@@ -51,27 +68,37 @@ extern int iscsit_check_dataout_hdr(struct iscsi_conn *, unsigned char *,
+@@ -51,27 +68,37 @@ extern int iscsit_check_dataout_hdr(stru
  				struct iscsi_cmd **);
  extern int iscsit_check_dataout_payload(struct iscsi_cmd *, struct iscsi_data *,
  				bool);
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0))
++#if !defined(CONFIG_COMPAT_RHEL_7_1) && (LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0))
 +extern int iscsit_handle_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
 +				unsigned char *);
 +#endif
-+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
  extern int iscsit_setup_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
  				struct iscsi_nopout *);
  extern int iscsit_process_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
@@ -1146,7 +1304,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				unsigned char *);
  extern int iscsit_handle_task_mgt_cmd(struct iscsi_conn *, struct iscsi_cmd *,
  				unsigned char *);
-+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
++#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
  extern int iscsit_setup_text_cmd(struct iscsi_conn *, struct iscsi_cmd *,
  				 struct iscsi_text *);
  extern int iscsit_process_text_cmd(struct iscsi_conn *, struct iscsi_cmd *,
@@ -1166,7 +1324,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  extern void iscsit_build_reject(struct iscsi_cmd *, struct iscsi_conn *,
  				struct iscsi_reject *);
  extern int iscsit_build_logout_rsp(struct iscsi_cmd *, struct iscsi_conn *,
-@@ -101,4 +128,6 @@ extern int iscsit_tmr_post_handler(struct iscsi_cmd *, struct iscsi_conn *);
+@@ -101,4 +128,6 @@ extern int iscsit_tmr_post_handler(struc
  extern struct iscsi_cmd *iscsit_allocate_cmd(struct iscsi_conn *, int);
  extern int iscsit_sequence_cmd(struct iscsi_conn *, struct iscsi_cmd *,
  			       unsigned char *, __be32);

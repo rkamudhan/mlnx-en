@@ -5,31 +5,29 @@ Change-Id: Ic3e1d37b0a03d542d3f7042f02ddfa34ddfa6126
 Signed-off-by: Yishai Hadas <yishaih@mellanox.com>
 Signed-off-by: Alaa Hleihel <alaa@mellanox.com>
 ---
- drivers/infiniband/hw/mlx4/alias_GUID.c    |    7 +
- drivers/infiniband/hw/mlx4/cq.c            |   36 ++++++
- drivers/infiniband/hw/mlx4/doorbell.c      |    8 ++
- drivers/infiniband/hw/mlx4/mad.c           |   52 ++++++++
- drivers/infiniband/hw/mlx4/main.c          |  171 +++++++++++++++++++++++++++
- drivers/infiniband/hw/mlx4/mcg.c           |   16 +++
- drivers/infiniband/hw/mlx4/mlx4_ib.h       |   22 ++++
- drivers/infiniband/hw/mlx4/mr.c            |  175 ++++++++++++++++++++++++++++
- drivers/infiniband/hw/mlx4/qp.c            |  134 +++++++++++++++++++++
- drivers/infiniband/hw/mlx4/sysfs.c         |   14 +++
- drivers/infiniband/hw/mlx4/wc.c            |    5 +
- drivers/net/ethernet/mellanox/mlx4/alloc.c |   24 ++++
- drivers/net/ethernet/mellanox/mlx4/catas.c |    8 ++
- drivers/net/ethernet/mellanox/mlx4/cmd.c   |   12 ++
- drivers/net/ethernet/mellanox/mlx4/eq.c    |    2 +
- drivers/net/ethernet/mellanox/mlx4/main.c  |   69 +++++++++++-
- drivers/net/ethernet/mellanox/mlx4/mr.c    |    4 +
- drivers/net/ethernet/mellanox/mlx4/pd.c    |   11 ++
- drivers/net/ethernet/mellanox/mlx4/port.c  |    4 +
- drivers/net/ethernet/mellanox/mlx4/reset.c |   12 ++
- include/linux/mlx4/device.h                |    4 +
- 21 files changed, 787 insertions(+), 3 deletions(-)
+ drivers/infiniband/hw/mlx4/alias_GUID.c    |   7 ++
+ drivers/infiniband/hw/mlx4/cq.c            |  36 ++++++
+ drivers/infiniband/hw/mlx4/doorbell.c      |   8 ++
+ drivers/infiniband/hw/mlx4/mad.c           |  52 +++++++++
+ drivers/infiniband/hw/mlx4/main.c          | 171 ++++++++++++++++++++++++++++
+ drivers/infiniband/hw/mlx4/mcg.c           |  16 +++
+ drivers/infiniband/hw/mlx4/mlx4_ib.h       |  22 ++++
+ drivers/infiniband/hw/mlx4/mr.c            | 175 +++++++++++++++++++++++++++++
+ drivers/infiniband/hw/mlx4/qp.c            | 134 ++++++++++++++++++++++
+ drivers/infiniband/hw/mlx4/sysfs.c         |  14 +++
+ drivers/infiniband/hw/mlx4/wc.c            |   5 +
+ drivers/net/ethernet/mellanox/mlx4/alloc.c |  24 ++++
+ drivers/net/ethernet/mellanox/mlx4/catas.c |   8 ++
+ drivers/net/ethernet/mellanox/mlx4/cmd.c   |  12 ++
+ drivers/net/ethernet/mellanox/mlx4/eq.c    |   2 +
+ drivers/net/ethernet/mellanox/mlx4/main.c  |  62 ++++++++++
+ drivers/net/ethernet/mellanox/mlx4/mr.c    |   4 +
+ drivers/net/ethernet/mellanox/mlx4/pd.c    |  11 ++
+ drivers/net/ethernet/mellanox/mlx4/port.c  |   4 +
+ drivers/net/ethernet/mellanox/mlx4/reset.c |  12 ++
+ include/linux/mlx4/device.h                |   4 +
+ 21 files changed, 783 insertions(+)
 
-diff --git a/drivers/infiniband/hw/mlx4/alias_GUID.c b/drivers/infiniband/hw/mlx4/alias_GUID.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/alias_GUID.c
 +++ b/drivers/infiniband/hw/mlx4/alias_GUID.c
 @@ -32,6 +32,7 @@
@@ -40,7 +38,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #include <rdma/ib_mad.h>
  #include <rdma/ib_smi.h>
  #include <rdma/ib_cache.h>
-@@ -629,6 +630,7 @@ void mlx4_ib_invalidate_all_guid_record(struct mlx4_ib_dev *dev, int port)
+@@ -629,6 +630,7 @@ void mlx4_ib_invalidate_all_guid_record(
  		any context including IRQ handler
  		http://lxr.linux.no/linux+v3.7/kernel/workqueue.c#L2981
  		*/
@@ -48,7 +46,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
  		__cancel_delayed_work(&dev->sriov.alias_guid.
  				      ports_guid[port - 1].alias_guid_work);
-@@ -636,6 +638,10 @@ void mlx4_ib_invalidate_all_guid_record(struct mlx4_ib_dev *dev, int port)
+@@ -636,6 +638,10 @@ void mlx4_ib_invalidate_all_guid_record(
  		cancel_delayed_work(&dev->sriov.alias_guid.
  				      ports_guid[port - 1].alias_guid_work);
  #endif
@@ -64,8 +62,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	return ret;
  }
 +#endif /* LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 16) */
-diff --git a/drivers/infiniband/hw/mlx4/cq.c b/drivers/infiniband/hw/mlx4/cq.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/cq.c
 +++ b/drivers/infiniband/hw/mlx4/cq.c
 @@ -35,6 +35,9 @@
@@ -78,7 +74,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #include "mlx4_ib.h"
  #include "user.h"
-@@ -160,6 +163,7 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *cont
+@@ -160,6 +163,7 @@ static int mlx4_ib_get_cq_umem(struct ml
  			       struct mlx4_ib_cq_buf *buf, struct ib_umem **umem,
  			       u64 buf_addr, int cqe)
  {
@@ -86,7 +82,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	int err;
  	int cqe_size = dev->dev->caps.cqe_size;
  	int shift;
-@@ -180,6 +184,38 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *cont
+@@ -180,6 +184,38 @@ static int mlx4_ib_get_cq_umem(struct ml
  	err = mlx4_ib_umem_write_mtt(dev, &buf->mtt, *umem);
  	if (err)
  		goto err_mtt;
@@ -125,11 +121,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return 0;
  
-diff --git a/drivers/infiniband/hw/mlx4/doorbell.c b/drivers/infiniband/hw/mlx4/doorbell.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/doorbell.c
 +++ b/drivers/infiniband/hw/mlx4/doorbell.c
-@@ -45,6 +45,9 @@ int mlx4_ib_db_map_user(struct mlx4_ib_ucontext *context, unsigned long virt,
+@@ -45,6 +45,9 @@ int mlx4_ib_db_map_user(struct mlx4_ib_u
  			struct mlx4_db *db)
  {
  	struct mlx4_ib_user_db_page *page;
@@ -139,7 +133,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	int err = 0;
  
  	mutex_lock(&context->db_page_mutex);
-@@ -72,7 +75,12 @@ int mlx4_ib_db_map_user(struct mlx4_ib_ucontext *context, unsigned long virt,
+@@ -72,7 +75,12 @@ int mlx4_ib_db_map_user(struct mlx4_ib_u
  	list_add(&page->list, &context->db_page_list);
  
  found:
@@ -152,8 +146,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	db->u.user_page = page;
  	++page->refcnt;
  
-diff --git a/drivers/infiniband/hw/mlx4/mad.c b/drivers/infiniband/hw/mlx4/mad.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/mad.c
 +++ b/drivers/infiniband/hw/mlx4/mad.c
 @@ -35,6 +35,9 @@
@@ -180,9 +172,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define GUID_TBL_BLK_SIZE (GUID_TBL_ENTRY_SIZE * GUID_TBL_BLK_NUM_ENTRIES)
 +#endif
  
- #define MAX_BE32 0xffffffffULL
- #define MAX_BE16 0xffffUL
-@@ -105,9 +110,11 @@ struct mlx4_rcv_tunnel_mad {
+ struct mlx4_mad_rcv_buf {
+ 	struct ib_grh grh;
+@@ -88,9 +93,11 @@ struct mlx4_rcv_tunnel_mad {
  } __packed;
  
  static void handle_client_rereg_event(struct mlx4_ib_dev *dev, u8 port_num);
@@ -194,7 +186,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  __be64 mlx4_ib_gen_node_guid(void)
  {
-@@ -258,7 +265,12 @@ static void smp_snoop(struct ib_device *ibdev, u8 port_num, struct ib_mad *mad,
+@@ -243,7 +250,12 @@ static void smp_snoop(struct ib_device *
  				handle_client_rereg_event(dev, port_num);
  
  			if (prev_lid != lid)
@@ -207,7 +199,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			break;
  
  		case IB_SMP_ATTR_PKEY_TABLE:
-@@ -291,9 +303,11 @@ static void smp_snoop(struct ib_device *ibdev, u8 port_num, struct ib_mad *mad,
+@@ -278,9 +290,11 @@ static void smp_snoop(struct ib_device *
  			if (pkey_change_bitmap) {
  				mlx4_ib_dispatch_event(dev, port_num,
  						       IB_EVENT_PKEY_CHANGE);
@@ -219,7 +211,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			}
  			break;
  
-@@ -302,6 +316,7 @@ static void smp_snoop(struct ib_device *ibdev, u8 port_num, struct ib_mad *mad,
+@@ -291,6 +305,7 @@ static void smp_snoop(struct ib_device *
  			if (!mlx4_is_master(dev->dev))
  				mlx4_ib_dispatch_event(dev, port_num,
  						       IB_EVENT_GID_CHANGE);
@@ -227,15 +219,15 @@ index xxxxxxx..xxxxxxx xxxxxx
  			/*if master, notify relevant slaves*/
  			if (mlx4_is_master(dev->dev) &&
  			    !dev->sriov.is_going_down) {
-@@ -311,6 +326,7 @@ static void smp_snoop(struct ib_device *ibdev, u8 port_num, struct ib_mad *mad,
+@@ -300,6 +315,7 @@ static void smp_snoop(struct ib_device *
  				mlx4_ib_notify_slaves_on_guid_change(dev, bn, port_num,
  								     (u8 *)(&((struct ib_smp *)mad)->data));
  			}
 +#endif
  			break;
  
- 		default:
-@@ -318,6 +334,7 @@ static void smp_snoop(struct ib_device *ibdev, u8 port_num, struct ib_mad *mad,
+ 		case IB_SMP_ATTR_SL_TO_VL_TABLE:
+@@ -326,6 +342,7 @@ static void smp_snoop(struct ib_device *
  		}
  }
  
@@ -243,7 +235,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static void __propagate_pkey_ev(struct mlx4_ib_dev *dev, int port_num,
  				int block, u32 change_bitmap)
  {
-@@ -351,6 +368,7 @@ static void __propagate_pkey_ev(struct mlx4_ib_dev *dev, int port_num,
+@@ -359,6 +376,7 @@ static void __propagate_pkey_ev(struct m
  		}
  	}
  }
@@ -251,7 +243,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static void node_desc_override(struct ib_device *dev,
  			       struct ib_mad *mad)
-@@ -469,6 +487,7 @@ static int find_slave_port_pkey_ix(struct mlx4_ib_dev *dev, int slave,
+@@ -477,6 +495,7 @@ static int find_slave_port_pkey_ix(struc
  	return -EINVAL;
  }
  
@@ -259,7 +251,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int get_gids_from_l3_hdr(struct ib_grh *grh, union ib_gid *sgid, union ib_gid *dgid)
  {
  	int version = ib_get_grh_header_version((void *)grh);
-@@ -483,6 +502,7 @@ static int get_gids_from_l3_hdr(struct ib_grh *grh, union ib_gid *sgid, union ib
+@@ -491,6 +510,7 @@ static int get_gids_from_l3_hdr(struct i
  
  	return ib_get_gids_from_grh(grh, net_type, sgid, dgid);
  }
@@ -267,7 +259,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  int mlx4_ib_send_to_slave(struct mlx4_ib_dev *dev, int slave, u8 port,
  			  enum ib_qp_type dest_qpt, struct ib_wc *wc,
-@@ -540,6 +560,7 @@ int mlx4_ib_send_to_slave(struct mlx4_ib_dev *dev, int slave, u8 port,
+@@ -548,6 +568,7 @@ int mlx4_ib_send_to_slave(struct mlx4_ib
  	 * The driver will set the force loopback bit in post_send */
  	memset(&attr, 0, sizeof attr);
  	attr.port_num = port;
@@ -275,7 +267,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (is_eth) {
  		union ib_gid sgid;
  
-@@ -547,6 +568,7 @@ int mlx4_ib_send_to_slave(struct mlx4_ib_dev *dev, int slave, u8 port,
+@@ -555,6 +576,7 @@ int mlx4_ib_send_to_slave(struct mlx4_ib
  			return -EINVAL;
  		attr.ah_flags = IB_AH_GRH;
  	}
@@ -283,7 +275,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	ah = ib_create_ah(tun_ctx->pd, &attr);
  	if (IS_ERR(ah))
  		return -ENOMEM;
-@@ -656,6 +678,7 @@ static int mlx4_ib_demux_mad(struct ib_device *ibdev, u8 port,
+@@ -664,6 +686,7 @@ static int mlx4_ib_demux_mad(struct ib_d
  	else
  		is_eth = 1;
  
@@ -291,7 +283,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (is_eth) {
  		union ib_gid dgid;
  		union ib_gid sgid;
-@@ -689,6 +712,7 @@ static int mlx4_ib_demux_mad(struct ib_device *ibdev, u8 port,
+@@ -697,6 +720,7 @@ static int mlx4_ib_demux_mad(struct ib_d
  				 slave, err);
  		return 0;
  	}
@@ -299,7 +291,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	/* Initially assume that this mad is for us */
  	slave = mlx4_master_func_num(dev->dev);
-@@ -1163,6 +1187,7 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev)
+@@ -1191,6 +1215,7 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_
  	}
  }
  
@@ -307,7 +299,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static void handle_lid_change_event(struct mlx4_ib_dev *dev, u8 port_num)
  {
  	mlx4_ib_dispatch_event(dev, port_num, IB_EVENT_LID_CHANGE);
-@@ -1171,22 +1196,28 @@ static void handle_lid_change_event(struct mlx4_ib_dev *dev, u8 port_num)
+@@ -1199,17 +1224,22 @@ static void handle_lid_change_event(stru
  		mlx4_gen_slaves_port_mgt_ev(dev->dev, port_num,
  					    MLX4_EQ_PORT_INFO_LID_CHANGE_MASK, 0, 0);
  }
@@ -329,6 +321,8 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  		}
  	}
+ 
+@@ -1232,6 +1262,7 @@ static void handle_client_rereg_event(st
  	mlx4_ib_dispatch_event(dev, port_num, IB_EVENT_CLIENT_REREGISTER);
  }
  
@@ -336,7 +330,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static void propagate_pkey_ev(struct mlx4_ib_dev *dev, int port_num,
  			      struct mlx4_eqe *eqe)
  {
-@@ -1246,6 +1277,7 @@ out:
+@@ -1291,6 +1322,7 @@ out:
  	kfree(out_mad);
  	return;
  }
@@ -344,7 +338,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  void handle_port_mgmt_change_event(struct work_struct *work)
  {
-@@ -1254,8 +1286,10 @@ void handle_port_mgmt_change_event(struct work_struct *work)
+@@ -1299,8 +1331,10 @@ void handle_port_mgmt_change_event(struc
  	struct mlx4_eqe *eqe = &(ew->ib_eqe);
  	u8 port = eqe->event.port_mgmt_change.port;
  	u32 changed_attr;
@@ -355,7 +349,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	switch (eqe->subtype) {
  	case MLX4_DEV_PMC_SUBTYPE_PORT_INFO:
-@@ -1271,15 +1305,21 @@ void handle_port_mgmt_change_event(struct work_struct *work)
+@@ -1316,15 +1350,21 @@ void handle_port_mgmt_change_event(struc
  
  		/* Check if it is a lid change event */
  		if (changed_attr & MLX4_EQ_PORT_INFO_LID_CHANGE_MASK)
@@ -377,7 +371,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		}
  
  		if (changed_attr & MLX4_EQ_PORT_INFO_CLIENT_REREG_MASK)
-@@ -1288,19 +1328,23 @@ void handle_port_mgmt_change_event(struct work_struct *work)
+@@ -1333,19 +1373,23 @@ void handle_port_mgmt_change_event(struc
  
  	case MLX4_DEV_PMC_SUBTYPE_PKEY_TABLE:
  		mlx4_ib_dispatch_event(dev, port, IB_EVENT_PKEY_CHANGE);
@@ -399,9 +393,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  		}
 +#endif
  		break;
- 	default:
- 		pr_warn("Unsupported subtype 0x%x for "
-@@ -2330,6 +2374,7 @@ int mlx4_ib_init_sriov(struct mlx4_ib_dev *dev)
+ 
+ 	case MLX4_DEV_PMC_SUBTYPE_SL_TO_VL_MAP:
+@@ -2392,6 +2436,7 @@ int mlx4_ib_init_sriov(struct mlx4_ib_de
  			mlx4_put_slave_node_guid(dev->dev, i, mlx4_ib_gen_node_guid());
  	}
  
@@ -409,7 +403,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	err = mlx4_ib_init_alias_guid_service(dev);
  	if (err) {
  		mlx4_ib_warn(&dev->ib_dev, "Failed init alias guid process.\n");
-@@ -2340,15 +2385,18 @@ int mlx4_ib_init_sriov(struct mlx4_ib_dev *dev)
+@@ -2402,15 +2447,18 @@ int mlx4_ib_init_sriov(struct mlx4_ib_de
  		mlx4_ib_warn(&dev->ib_dev, "Failed to register sysfs\n");
  		goto sysfs_err;
  	}
@@ -428,7 +422,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		err = alloc_pv_object(dev, mlx4_master_func_num(dev->dev), i + 1,
  				      &dev->sriov.sqps[i]);
  		if (err)
-@@ -2367,12 +2415,14 @@ demux_err:
+@@ -2429,12 +2477,14 @@ demux_err:
  		free_pv_object(dev, mlx4_master_func_num(dev->dev), i + 1);
  		mlx4_ib_free_demux_ctx(&dev->sriov.demux[i]);
  	}
@@ -443,7 +437,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	mlx4_ib_cm_paravirt_clean(dev, -1);
  
  	return err;
-@@ -2399,7 +2449,9 @@ void mlx4_ib_close_sriov(struct mlx4_ib_dev *dev)
+@@ -2461,7 +2511,9 @@ void mlx4_ib_close_sriov(struct mlx4_ib_
  		}
  
  		mlx4_ib_cm_paravirt_clean(dev, -1);
@@ -453,11 +447,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	}
  }
-diff --git a/drivers/infiniband/hw/mlx4/main.c b/drivers/infiniband/hw/mlx4/main.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/main.c
 +++ b/drivers/infiniband/hw/mlx4/main.c
-@@ -531,8 +531,10 @@ int __mlx4_ib_query_gid(struct ib_device *ibdev, u8 port, int index,
+@@ -533,8 +533,10 @@ int __mlx4_ib_query_gid(struct ib_device
  	in_mad->attr_id  = IB_SMP_ATTR_PORT_INFO;
  	in_mad->attr_mod = cpu_to_be32(port);
  
@@ -468,7 +460,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	err = mlx4_MAD_IFC(dev, mad_ifc_flags, port, NULL, NULL, in_mad, out_mad);
  	if (err)
-@@ -927,6 +929,7 @@ static void mlx4_ib_set_vma_data(struct vm_area_struct *vma,
+@@ -999,6 +1001,7 @@ static void mlx4_ib_set_vma_data(struct
  }
  #endif
  
@@ -476,7 +468,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static unsigned long mlx4_ib_get_unmapped_area(struct file *file,
  			unsigned long addr,
  			unsigned long len, unsigned long pgoff,
-@@ -952,18 +955,25 @@ static unsigned long mlx4_ib_get_unmapped_area(struct file *file,
+@@ -1024,18 +1027,25 @@ static unsigned long mlx4_ib_get_unmappe
  	return current->mm->get_unmapped_area(file, addr, len,
  						pgoff, flags);
  }
@@ -502,7 +494,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (command < MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES) {
  		/* compatability handling for commands 0 & 1*/
-@@ -986,6 +996,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
+@@ -1058,6 +1068,7 @@ static int mlx4_ib_mmap(struct ib_uconte
  		mlx4_ib_set_vma_data(vma, &mucontext->hw_bar_info[HW_BAR_DB]);
  #endif
  
@@ -510,7 +502,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	} else if (command == MLX4_IB_MMAP_BLUE_FLAME_PAGE &&
  			dev->dev->caps.bf_reg_size != 0) {
  		/* We prevent double mmaping on same context */
-@@ -1004,6 +1015,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
+@@ -1076,6 +1087,7 @@ static int mlx4_ib_mmap(struct ib_uconte
  		mlx4_ib_set_vma_data(vma, &mucontext->hw_bar_info[HW_BAR_BF]);
  #endif
  
@@ -518,7 +510,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	} else if (command == MLX4_IB_MMAP_GET_HW_CLOCK) {
  		struct mlx4_clock_params params;
  		int ret;
-@@ -1028,6 +1040,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
+@@ -1100,6 +1112,7 @@ static int mlx4_ib_mmap(struct ib_uconte
  #if defined(HAVE_PUT_TASK_STRUCT_EXPORTED) && defined (HAVE_GET_TASK_PID_EXPORTED) && defined(HAVE_GET_PID_TASK_EXPORTED)
  		mlx4_ib_set_vma_data(vma, &mucontext->hw_bar_info[HW_BAR_CLOCK]);
  #endif
@@ -526,7 +518,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	} else if (command == MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES ||
  		   command == MLX4_IB_EXP_MMAP_GET_CONTIGUOUS_PAGES_CPU_NUMA ||
-@@ -1133,12 +1146,14 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
+@@ -1205,12 +1218,14 @@ static int mlx4_ib_mmap(struct ib_uconte
  #if defined(HAVE_PUT_TASK_STRUCT_EXPORTED) && defined (HAVE_GET_TASK_PID_EXPORTED) && defined(HAVE_GET_PID_TASK_EXPORTED)
  		mlx4_ib_set_vma_data(vma, &uar->hw_bar_info[HW_BAR_BF]);
  #endif
@@ -541,7 +533,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_ib_ioctl(struct ib_ucontext *context, unsigned int cmd,
  			 unsigned long arg)
  {
-@@ -1164,15 +1179,19 @@ static int mlx4_ib_ioctl(struct ib_ucontext *context, unsigned int cmd,
+@@ -1236,15 +1251,19 @@ static int mlx4_ib_ioctl(struct ib_ucont
  
  	return ret;
  }
@@ -561,7 +553,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (q_values & IB_VALUES_HW_CLOCK) {
  		if (dev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_TS) {
  			cycles = mlx4_read_clock(dev->dev) & CLOCKSOURCE_MASK(48);
-@@ -1183,6 +1202,7 @@ static int mlx4_ib_query_values(struct ib_device *device, int q_values,
+@@ -1255,6 +1274,7 @@ static int mlx4_ib_query_values(struct i
  			err = -ENOTSUPP;
  		}
  	}
@@ -569,7 +561,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (q_values && !err)
  		err = -ENOTSUPP;
-@@ -2030,6 +2050,7 @@ out:
+@@ -2102,6 +2122,7 @@ out:
  	return err;
  }
  
@@ -577,7 +569,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static ssize_t show_hca(struct device *device, struct device_attribute *attr,
  			char *buf)
  {
-@@ -2076,6 +2097,45 @@ static struct device_attribute *mlx4_class_attributes[] = {
+@@ -2148,6 +2169,45 @@ static struct device_attribute *mlx4_cla
  	&dev_attr_hca_type,
  	&dev_attr_board_id
  };
@@ -623,7 +615,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #define MLX4_IB_INVALID_MAC	((u64)-1)
  static void mlx4_ib_update_qps(struct mlx4_ib_dev *ibdev,
-@@ -2488,6 +2548,7 @@ static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
+@@ -2560,6 +2620,7 @@ static void mlx4_ib_free_eqs(struct mlx4
   * create show function and a device_attribute struct pointing to
   * the function for _name
   */
@@ -631,7 +623,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define DEVICE_DIAG_RPRT_ATTR(_name, _offset, _op_mod)		\
  static ssize_t show_rprt_##_name(struct device *dev,		\
  				 struct device_attribute *attr,	\
-@@ -2495,9 +2556,18 @@ static ssize_t show_rprt_##_name(struct device *dev,		\
+@@ -2567,9 +2628,18 @@ static ssize_t show_rprt_##_name(struct
  	return show_diag_rprt(dev, buf, _offset, _op_mod);	\
  }								\
  static DEVICE_ATTR(_name, S_IRUGO, show_rprt_##_name, NULL);
@@ -650,7 +642,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static size_t show_diag_rprt(struct device *device, char *buf,
  			     u32 offset, u8 op_modifier)
  {
-@@ -2514,7 +2584,26 @@ static size_t show_diag_rprt(struct device *device, char *buf,
+@@ -2586,7 +2656,26 @@ static size_t show_diag_rprt(struct devi
  
  	return sprintf(buf, "%d\n", diag_counter);
  }
@@ -663,7 +655,7 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	u32 diag_counter = 0;
 +	struct mlx4_ib_dev *dev = container_of(cdev, struct mlx4_ib_dev,
 +					       ib_dev.class_dev);
-+
+ 
 +	ret = mlx4_query_diag_counters(dev->dev, 1, op_modifier,
 +				       &counter_offset, &diag_counter);
 +	if (ret)
@@ -672,12 +664,12 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	return sprintf(buf,"%d\n", diag_counter);
 +}
 +#endif /* LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 16) */
- 
++
 +#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 16))
  static ssize_t clear_diag_counters(struct device *device,
  				   struct device_attribute *attr,
  				   const char *buf, size_t length)
-@@ -2530,6 +2619,22 @@ static ssize_t clear_diag_counters(struct device *device,
+@@ -2602,6 +2691,22 @@ static ssize_t clear_diag_counters(struc
  
  	return length;
  }
@@ -700,7 +692,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  DEVICE_DIAG_RPRT_ATTR(rq_num_lle	, 0x00, 2);
  DEVICE_DIAG_RPRT_ATTR(sq_num_lle	, 0x04, 2);
-@@ -2560,6 +2665,7 @@ DEVICE_DIAG_RPRT_ATTR(num_cqovf		, 0x1A0, 2);
+@@ -2632,6 +2737,7 @@ DEVICE_DIAG_RPRT_ATTR(num_cqovf		, 0x1A0
  DEVICE_DIAG_RPRT_ATTR(num_eqovf		, 0x1A4, 2);
  DEVICE_DIAG_RPRT_ATTR(num_baddb		, 0x1A8, 2);
  
@@ -708,7 +700,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static DEVICE_ATTR(clear_diag, S_IWUSR, NULL, clear_diag_counters);
  
  static struct attribute *diag_rprt_attrs[] = {
-@@ -2594,6 +2700,42 @@ static struct attribute *diag_rprt_attrs[] = {
+@@ -2666,6 +2772,42 @@ static struct attribute *diag_rprt_attrs
  	&dev_attr_clear_diag.attr,
  	NULL
  };
@@ -751,7 +743,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static struct attribute_group diag_counters_group = {
  	.name  = "diag_counters",
-@@ -2637,6 +2779,7 @@ error:
+@@ -2709,6 +2851,7 @@ error:
  
  static void init_dev_assign(void)
  {
@@ -759,7 +751,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	int i = 1;
  
  	spin_lock_init(&dev_num_str_lock);
-@@ -2665,6 +2808,7 @@ err:
+@@ -2737,6 +2880,7 @@ err:
  	dev_num_str_bitmap = NULL;
  	pr_warn("mlx4_ib: The value of 'dev_assign_str' parameter "
  			    "is incorrect. The parameter value is discarded!");
@@ -767,7 +759,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  static int mlx4_ib_dev_idx(struct mlx4_dev *dev)
-@@ -2794,7 +2938,9 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
+@@ -2866,7 +3010,9 @@ static void *mlx4_ib_add(struct mlx4_dev
  	ibdev->ib_dev.alloc_ucontext	= mlx4_ib_alloc_ucontext;
  	ibdev->ib_dev.dealloc_ucontext	= mlx4_ib_dealloc_ucontext;
  	ibdev->ib_dev.mmap		= mlx4_ib_mmap;
@@ -777,7 +769,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	ibdev->ib_dev.alloc_pd		= mlx4_ib_alloc_pd;
  	ibdev->ib_dev.dealloc_pd	= mlx4_ib_dealloc_pd;
  	ibdev->ib_dev.create_ah		= mlx4_ib_create_ah;
-@@ -2823,7 +2969,9 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
+@@ -2895,7 +3041,9 @@ static void *mlx4_ib_add(struct mlx4_dev
  	ibdev->ib_dev.dereg_mr		= mlx4_ib_dereg_mr;
  	ibdev->ib_dev.query_values      = mlx4_ib_query_values;
  	ibdev->ib_dev.alloc_fast_reg_mr = mlx4_ib_alloc_fast_reg_mr;
@@ -787,7 +779,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	ibdev->ib_dev.alloc_fast_reg_page_list = mlx4_ib_alloc_fast_reg_page_list;
  	ibdev->ib_dev.free_fast_reg_page_list  = mlx4_ib_free_fast_reg_page_list;
  	ibdev->ib_dev.attach_mcast	= mlx4_ib_mcg_attach;
-@@ -2995,6 +3143,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
+@@ -3068,6 +3216,7 @@ static void *mlx4_ib_add(struct mlx4_dev
  		}
  	}
  
@@ -795,7 +787,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	for (j = 0; j < ARRAY_SIZE(mlx4_class_attributes); ++j) {
  		if (device_create_file(&ibdev->ib_dev.dev,
  				       mlx4_class_attributes[j]))
-@@ -3002,6 +3151,16 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
+@@ -3075,6 +3224,16 @@ static void *mlx4_ib_add(struct mlx4_dev
  	}
  	if (sysfs_create_group(&ibdev->ib_dev.dev.kobj, &diag_counters_group))
  		goto err_notif;
@@ -812,7 +804,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	ibdev->ib_active = true;
  
-@@ -3030,7 +3189,9 @@ err_notif:
+@@ -3103,7 +3262,9 @@ err_notif:
  	}
  	flush_workqueue(wq);
  
@@ -822,7 +814,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  err_mad:
  	mlx4_ib_mad_cleanup(ibdev);
-@@ -3143,7 +3304,11 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
+@@ -3216,7 +3377,11 @@ static void mlx4_ib_remove(struct mlx4_d
  	flush_workqueue(wq);
  
  	mlx4_ib_close_sriov(ibdev);
@@ -834,21 +826,18 @@ index xxxxxxx..xxxxxxx xxxxxx
  	mlx4_ib_mad_cleanup(ibdev);
  	dev_idx = -1;
  	if (dr_active && !(ibdev->dev->flags & MLX4_FLAG_DEV_NUM_STR)) {
-@@ -3372,11 +3537,13 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
- 	case MLX4_DEV_EVENT_PORT_UP:
- 		if (p > ibdev->num_ports)
- 			return;
-+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 16))
- 		if (mlx4_is_master(dev) &&
+@@ -3489,8 +3654,10 @@ static void mlx4_ib_event(struct mlx4_de
+ 		if (!mlx4_is_slave(dev) &&
  		    rdma_port_get_link_layer(&ibdev->ib_dev, p) ==
  			IB_LINK_LAYER_INFINIBAND) {
- 			mlx4_ib_invalidate_all_guid_record(ibdev, p);
- 		}
++#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 16))
+ 			if (mlx4_is_master(dev))
+ 				mlx4_ib_invalidate_all_guid_record(ibdev, p);
 +#endif
- 		ibev.event = IB_EVENT_PORT_ACTIVE;
- 		break;
- 
-@@ -3412,6 +3579,7 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
+ 			if (ibdev->dev->flags & MLX4_FLAG_SECURE_HOST &&
+ 			    !(ibdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_SL_TO_VL_CHANGE_EVENT))
+ 				mlx4_sched_ib_sl2vl_update_work(ibdev, p);
+@@ -3530,6 +3697,7 @@ static void mlx4_ib_event(struct mlx4_de
  	case MLX4_DEV_EVENT_SLAVE_INIT:
  		/* here, p is the slave id */
  		do_slave_init(ibdev, p, 1);
@@ -856,7 +845,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (mlx4_is_master(dev)) {
  			int i;
  
-@@ -3423,9 +3591,11 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
+@@ -3541,9 +3709,11 @@ static void mlx4_ib_event(struct mlx4_de
  								       1);
  			}
  		}
@@ -868,7 +857,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (mlx4_is_master(dev)) {
  			int i;
  
-@@ -3437,6 +3607,7 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
+@@ -3555,6 +3725,7 @@ static void mlx4_ib_event(struct mlx4_de
  								       0);
  			}
  		}
@@ -876,8 +865,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/* here, p is the slave id */
  		do_slave_init(ibdev, p, 0);
  		return;
-diff --git a/drivers/infiniband/hw/mlx4/mcg.c b/drivers/infiniband/hw/mlx4/mcg.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/mcg.c
 +++ b/drivers/infiniband/hw/mlx4/mcg.c
 @@ -110,7 +110,9 @@ struct mcast_group {
@@ -890,7 +877,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	/* refcount is the reference count for the following:
  	   1. Each queued request
-@@ -449,8 +451,10 @@ static int release_group(struct mcast_group *group, int from_timeout_handler)
+@@ -449,8 +451,10 @@ static int release_group(struct mcast_gr
  		}
  
  		nzgroup = memcmp(&group->rec.mgid, &mgid0, sizeof mgid0);
@@ -901,7 +888,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (!list_empty(&group->pending_list))
  			mcg_warn_group(group, "releasing a group with non empty pending list\n");
  		if (nzgroup)
-@@ -775,7 +779,9 @@ static struct mcast_group *search_relocate_mgid0_group(struct mlx4_ib_demux_ctx
+@@ -775,7 +779,9 @@ static struct mcast_group *search_reloca
  				}
  
  				atomic_inc(&group->refcount);
@@ -911,7 +898,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				mutex_unlock(&group->lock);
  				mutex_unlock(&ctx->mcg_table_lock);
  				return group;
-@@ -803,8 +809,10 @@ static struct mcast_group *search_relocate_mgid0_group(struct mlx4_ib_demux_ctx
+@@ -803,8 +809,10 @@ static struct mcast_group *search_reloca
  	return NULL;
  }
  
@@ -922,7 +909,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static struct mcast_group *acquire_group(struct mlx4_ib_demux_ctx *ctx,
  					 union ib_gid *mgid, int create,
-@@ -840,11 +848,13 @@ static struct mcast_group *acquire_group(struct mlx4_ib_demux_ctx *ctx,
+@@ -840,11 +848,13 @@ static struct mcast_group *acquire_group
  	sprintf(group->name, "%016llx%016llx",
  			be64_to_cpu(group->rec.mgid.global.subnet_prefix),
  			be64_to_cpu(group->rec.mgid.global.interface_id));
@@ -936,7 +923,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	group->state = MCAST_IDLE;
  
  	if (is_mgid0) {
-@@ -859,7 +869,9 @@ static struct mcast_group *acquire_group(struct mlx4_ib_demux_ctx *ctx,
+@@ -859,7 +869,9 @@ static struct mcast_group *acquire_group
  		return ERR_PTR(-EINVAL);
  	}
  
@@ -946,7 +933,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  found:
  	atomic_inc(&group->refcount);
-@@ -986,6 +998,7 @@ int mlx4_ib_mcg_multiplex_handler(struct ib_device *ibdev, int port,
+@@ -986,6 +998,7 @@ int mlx4_ib_mcg_multiplex_handler(struct
  	}
  }
  
@@ -954,7 +941,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static ssize_t sysfs_show_group(struct device *dev,
  		struct device_attribute *attr, char *buf)
  {
-@@ -1037,6 +1050,7 @@ static ssize_t sysfs_show_group(struct device *dev,
+@@ -1037,6 +1050,7 @@ static ssize_t sysfs_show_group(struct d
  
  	return len;
  }
@@ -962,7 +949,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  int mlx4_ib_mcg_port_init(struct mlx4_ib_demux_ctx *ctx)
  {
-@@ -1064,7 +1078,9 @@ static void force_clean_group(struct mcast_group *group)
+@@ -1064,7 +1078,9 @@ static void force_clean_group(struct mca
  		list_del(&req->group_list);
  		kfree(req);
  	}
@@ -972,8 +959,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	rb_erase(&group->node, &group->demux->mcg_table);
  	kfree(group);
  }
-diff --git a/drivers/infiniband/hw/mlx4/mlx4_ib.h b/drivers/infiniband/hw/mlx4/mlx4_ib.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/mlx4_ib.h
 +++ b/drivers/infiniband/hw/mlx4/mlx4_ib.h
 @@ -66,8 +66,10 @@ enum {
@@ -1044,7 +1029,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  struct mlx4_ib_counter {
  	int counter_index;
-@@ -655,10 +665,12 @@ struct mlx4_ib_dev {
+@@ -656,10 +666,12 @@ struct mlx4_ib_dev {
  	struct mlx4_ib_iboe	iboe;
  	struct mlx4_ib_counter	counters[MLX4_MAX_PORTS];
  	struct mlx4_ib_eq_table_entry	*eq_table;
@@ -1057,7 +1042,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct pkey_mgt		pkeys;
  	unsigned long *ib_uc_qpns_bitmap;
  	int steer_qpn_count;
-@@ -788,9 +800,15 @@ void mlx4_ib_db_unmap_user(struct mlx4_ib_ucontext *context, struct mlx4_db *db)
+@@ -790,9 +802,15 @@ void mlx4_ib_db_unmap_user(struct mlx4_i
  struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc);
  int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
  			   struct ib_umem *umem);
@@ -1073,7 +1058,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
  				  u64 virt_addr, int access_flags,
  				  struct ib_udata *udata, int mr_id);
-@@ -935,6 +953,7 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
+@@ -937,6 +955,7 @@ int mlx4_ib_multiplex_cm_handler(struct
  void mlx4_ib_cm_paravirt_init(struct mlx4_ib_dev *dev);
  void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave_id);
  
@@ -1081,7 +1066,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  /* alias guid support */
  void mlx4_ib_init_alias_guid_work(struct mlx4_ib_dev *dev, int port);
  int mlx4_ib_init_alias_guid_service(struct mlx4_ib_dev *dev);
-@@ -953,13 +972,16 @@ int add_sysfs_port_mcg_attr(struct mlx4_ib_dev *device, int port_num,
+@@ -955,13 +974,16 @@ int add_sysfs_port_mcg_attr(struct mlx4_
  			    struct attribute *attr);
  void del_sysfs_port_mcg_attr(struct mlx4_ib_dev *device, int port_num,
  			     struct attribute *attr);
@@ -1098,8 +1083,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  __be64 mlx4_ib_gen_node_guid(void);
  
-diff --git a/drivers/infiniband/hw/mlx4/mr.c b/drivers/infiniband/hw/mlx4/mr.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/mr.c
 +++ b/drivers/infiniband/hw/mlx4/mr.c
 @@ -42,7 +42,9 @@
@@ -1112,7 +1095,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static u32 convert_access(int acc)
  {
-@@ -76,6 +78,7 @@ static ssize_t shared_mr_proc_write(struct file *file,
+@@ -76,6 +78,7 @@ static ssize_t shared_mr_proc_write(stru
  static int shared_mr_mmap(struct file *filep, struct vm_area_struct *vma)
  {
  
@@ -1120,7 +1103,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #ifdef HAVE_PDE_DATA
  	struct mlx4_shared_mr_info *smr_info =
  		(struct mlx4_shared_mr_info *)PDE_DATA(filep->f_path.dentry->d_inode);
-@@ -91,6 +94,9 @@ static int shared_mr_mmap(struct file *filep, struct vm_area_struct *vma)
+@@ -91,6 +94,9 @@ static int shared_mr_mmap(struct file *f
  
  	return ib_umem_map_to_vma(smr_info->umem,
  					vma);
@@ -1130,7 +1113,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  }
  
-@@ -101,6 +107,7 @@ static const struct file_operations shared_mr_proc_ops = {
+@@ -101,6 +107,7 @@ static const struct file_operations shar
  	.mmap	= shared_mr_mmap
  };
  
@@ -1138,7 +1121,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static mode_t convert_shared_access(int acc)
  {
  
-@@ -112,6 +119,7 @@ static mode_t convert_shared_access(int acc)
+@@ -112,6 +119,7 @@ static mode_t convert_shared_access(int
  	       (acc & IB_ACCESS_SHARED_MR_OTHER_WRITE   ? S_IWOTH  : 0);
  
  }
@@ -1154,7 +1137,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_ib_umem_write_mtt_block(struct mlx4_ib_dev *dev,
  						struct mlx4_mtt *mtt,
  						u64 mtt_size,
-@@ -214,10 +223,12 @@ static int mlx4_ib_umem_write_mtt_block(struct mlx4_ib_dev *dev,
+@@ -214,10 +223,12 @@ static int mlx4_ib_umem_write_mtt_block(
  
  	return 0;
  }
@@ -1167,7 +1150,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	u64 *pages;
  	u64 len = 0;
  	int err = 0;
-@@ -279,6 +290,44 @@ int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
+@@ -279,6 +290,44 @@ int mlx4_ib_umem_write_mtt(struct mlx4_i
  
  	if (npages)
  		err = mlx4_write_mtt(dev->dev, mtt, start_index, npages, pages);
@@ -1242,7 +1225,7 @@ index xxxxxxx..xxxxxxx xxxxxx
 +	int i;
 +	int j = 0;
 +	int off = start & (HPAGE_SIZE - 1);
-+
+ 
 +	n = DIV_ROUND_UP(off + umem->length, HPAGE_SIZE);
 +	arr = vmalloc(n * sizeof *arr);
 +	if (!arr)
@@ -1285,7 +1268,7 @@ index xxxxxxx..xxxxxxx xxxxxx
 +		goto out;
 +
 +	err = mlx4_write_mtt(dev->dev, &mr->mmr.mtt, 0, n, arr);
- 
++
 +out:
 +	vfree(arr);
 +	return err;
@@ -1307,7 +1290,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
  				  u64 virt_addr, int access_flags,
-@@ -584,6 +706,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
+@@ -584,6 +706,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct
  	int shift;
  	int err;
  	int n;
@@ -1315,7 +1298,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct ib_peer_memory_client *ib_peer_mem;
  	struct vm_area_struct *vma;
  	int umem_flags = access_flags;
-@@ -621,6 +744,33 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
+@@ -621,6 +744,33 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct
  	err = mlx4_ib_umem_write_mtt(dev, &mr->mmr.mtt, mr->umem);
  	if (err)
  		goto err_mr;
@@ -1349,7 +1332,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	err = mlx4_mr_enable(dev->dev, &mr->mmr);
  	if (err)
-@@ -628,6 +778,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
+@@ -628,6 +778,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct
  
  	mr->ibmr.rkey = mr->ibmr.lkey = mr->mmr.key;
  	atomic_set(&mr->invalidated, 0);
@@ -1357,7 +1340,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* Check whether MR should be shared */
  	if (is_shared_mr(access_flags)) {
  	/* start address and length must be aligned to page size in order
-@@ -656,12 +807,15 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
+@@ -656,12 +807,15 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct
  		ib_umem_activate_invalidation_notifier(mr->umem,
  					mlx4_invalidate_umem, mr);
  	}
@@ -1373,7 +1356,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  err_mr:
  	(void) mlx4_mr_free(to_mdev(pd->device)->dev, &mr->mmr);
-@@ -714,6 +868,7 @@ int mlx4_ib_exp_rereg_user_mr(struct ib_mr *mr, int flags,
+@@ -714,6 +868,7 @@ int mlx4_ib_exp_rereg_user_mr(struct ib_
  		int err;
  		int n;
  
@@ -1381,7 +1364,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/* Peer memory isn't supported */
  		if (NULL != mmr->umem->ib_peer_mem) {
  			err = -ENOTSUPP;
-@@ -727,21 +882,32 @@ int mlx4_ib_exp_rereg_user_mr(struct ib_mr *mr, int flags,
+@@ -727,21 +882,32 @@ int mlx4_ib_exp_rereg_user_mr(struct ib_
  			free_smr_info(mmr);
  			mmr->smr_info = NULL;
  		}
@@ -1440,8 +1423,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	kfree(mr);
  
  	return 0;
-diff --git a/drivers/infiniband/hw/mlx4/qp.c b/drivers/infiniband/hw/mlx4/qp.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/qp.c
 +++ b/drivers/infiniband/hw/mlx4/qp.c
 @@ -111,6 +111,7 @@ enum {
@@ -1475,7 +1456,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  };
  
  #ifndef wc_wmb
-@@ -622,6 +639,85 @@ static int set_user_sq_size(struct mlx4_ib_dev *dev,
+@@ -622,6 +639,85 @@ static int set_user_sq_size(struct mlx4_
  	return 0;
  }
  
@@ -1561,7 +1542,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int alloc_proxy_bufs(struct ib_device *dev, struct mlx4_ib_qp *qp)
  {
  	int i;
-@@ -1094,7 +1190,9 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
+@@ -1095,7 +1191,9 @@ static int create_qp_common(struct mlx4_
  		struct mlx4_exp_ib_create_qp ucmd;
  		int ucmd_size;
  		int shift;
@@ -1571,7 +1552,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		if (udata->src == IB_UDATA_EXP_CMD)
  			ucmd_size = sizeof(ucmd);
-@@ -1129,12 +1227,40 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
+@@ -1130,12 +1228,40 @@ static int create_qp_common(struct mlx4_
  			goto err;
  		}
  
@@ -1612,7 +1593,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		err = mlx4_ib_umem_write_mtt(dev, &qp->mtt, qp->umem);
  		if (err)
-@@ -3492,7 +3618,15 @@ static int lay_inline_data(struct mlx4_ib_qp *qp, struct ib_send_wr *wr,
+@@ -3516,7 +3642,15 @@ static int lay_inline_data(struct mlx4_i
  static void mlx4_bf_copy(unsigned long *dst, unsigned long *src,
  				unsigned bytecnt)
  {
@@ -1628,8 +1609,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
-diff --git a/drivers/infiniband/hw/mlx4/sysfs.c b/drivers/infiniband/hw/mlx4/sysfs.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/sysfs.c
 +++ b/drivers/infiniband/hw/mlx4/sysfs.c
 @@ -30,11 +30,13 @@
@@ -1646,7 +1625,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #include <rdma/ib_mad.h>
  /*show_admin_alias_guid returns the administratively assigned value of that GUID.
-@@ -460,6 +462,17 @@ static ssize_t show_port_pkey(struct mlx4_port *p, struct port_attribute *attr,
+@@ -460,6 +462,17 @@ static ssize_t show_port_pkey(struct mlx
  	return ret;
  }
  
@@ -1664,13 +1643,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  static ssize_t store_port_pkey(struct mlx4_port *p, struct port_attribute *attr,
  			       const char *buf, size_t count)
  {
-@@ -888,3 +901,4 @@ void mlx4_ib_device_unregister_sysfs(struct mlx4_ib_dev *device)
+@@ -888,3 +901,4 @@ void mlx4_ib_device_unregister_sysfs(str
  	kobject_put(device->iov_parent);
  	kobject_put(device->ib_dev.ports_parent->parent);
  }
 +#endif /* LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 16) */
-diff --git a/drivers/infiniband/hw/mlx4/wc.c b/drivers/infiniband/hw/mlx4/wc.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/hw/mlx4/wc.c
 +++ b/drivers/infiniband/hw/mlx4/wc.c
 @@ -37,7 +37,12 @@
@@ -1686,11 +1663,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  int mlx4_wc_enabled(void)
-diff --git a/drivers/net/ethernet/mellanox/mlx4/alloc.c b/drivers/net/ethernet/mellanox/mlx4/alloc.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/alloc.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/alloc.c
-@@ -110,6 +110,9 @@ u32 mlx4_bitmap_alloc_range(struct mlx4_bitmap *bitmap, int cnt,
+@@ -110,6 +110,9 @@ u32 mlx4_bitmap_alloc_range(struct mlx4_
  			    int align, u32 skip_mask)
  {
  	u32 obj;
@@ -1700,7 +1675,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (likely(cnt == 1 && align == 1 && !skip_mask))
  		return mlx4_bitmap_alloc(bitmap);
-@@ -126,7 +129,12 @@ u32 mlx4_bitmap_alloc_range(struct mlx4_bitmap *bitmap, int cnt,
+@@ -126,7 +129,12 @@ u32 mlx4_bitmap_alloc_range(struct mlx4_
  	}
  
  	if (obj < bitmap->max) {
@@ -1713,7 +1688,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (obj == bitmap->last) {
  			bitmap->last = (obj + cnt);
  			if (bitmap->last >= bitmap->max)
-@@ -157,6 +165,9 @@ static u32 mlx4_bitmap_masked_value(struct mlx4_bitmap *bitmap, u32 obj)
+@@ -157,6 +165,9 @@ static u32 mlx4_bitmap_masked_value(stru
  void mlx4_bitmap_free_range(struct mlx4_bitmap *bitmap, u32 obj, int cnt,
  			    int use_rr)
  {
@@ -1723,7 +1698,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	obj &= bitmap->max + bitmap->reserved_top - 1;
  
  	spin_lock(&bitmap->lock);
-@@ -165,7 +176,12 @@ void mlx4_bitmap_free_range(struct mlx4_bitmap *bitmap, u32 obj, int cnt,
+@@ -165,7 +176,12 @@ void mlx4_bitmap_free_range(struct mlx4_
  		bitmap->top = (bitmap->top + bitmap->max + bitmap->reserved_top)
  				& bitmap->mask;
  	}
@@ -1736,7 +1711,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	bitmap->avail += cnt;
  	spin_unlock(&bitmap->lock);
  }
-@@ -173,6 +189,9 @@ void mlx4_bitmap_free_range(struct mlx4_bitmap *bitmap, u32 obj, int cnt,
+@@ -173,6 +189,9 @@ void mlx4_bitmap_free_range(struct mlx4_
  int mlx4_bitmap_init(struct mlx4_bitmap *bitmap, u32 num, u32 mask,
  		     u32 reserved_bot, u32 reserved_top)
  {
@@ -1746,7 +1721,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* num must be a power of 2 */
  	if (num != roundup_pow_of_two(num))
  		return -EINVAL;
-@@ -190,7 +209,12 @@ int mlx4_bitmap_init(struct mlx4_bitmap *bitmap, u32 num, u32 mask,
+@@ -190,7 +209,12 @@ int mlx4_bitmap_init(struct mlx4_bitmap
  	if (!bitmap->table)
  		return -ENOMEM;
  
@@ -1759,11 +1734,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return 0;
  }
-diff --git a/drivers/net/ethernet/mellanox/mlx4/catas.c b/drivers/net/ethernet/mellanox/mlx4/catas.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/catas.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/catas.c
-@@ -73,6 +73,7 @@ static int mlx4_reset_master(struct mlx4_dev *dev)
+@@ -73,6 +73,7 @@ static int mlx4_reset_master(struct mlx4
  	if (mlx4_is_master(dev))
  		mlx4_report_internal_err_comm_event(dev);
  
@@ -1771,7 +1744,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (!pci_channel_offline(dev->persist->pdev)) {
  		err = read_vendor_id(dev);
  		/* If PCI can't be accessed to read vendor ID we assume that its
-@@ -85,6 +86,11 @@ static int mlx4_reset_master(struct mlx4_dev *dev)
+@@ -85,6 +86,11 @@ static int mlx4_reset_master(struct mlx4
  		if (err)
  			mlx4_err(dev, "Fail to reset HCA\n");
  	}
@@ -1783,7 +1756,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return err;
  }
-@@ -100,8 +106,10 @@ static int mlx4_reset_slave(struct mlx4_dev *dev)
+@@ -100,8 +106,10 @@ static int mlx4_reset_slave(struct mlx4_
  	unsigned long end;
  	struct mlx4_priv *priv = mlx4_priv(dev);
  
@@ -1794,11 +1767,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	comm_flags = swab32(readl((__iomem char *)priv->mfunc.comm +
  				  MLX4_COMM_CHAN_FLAGS));
-diff --git a/drivers/net/ethernet/mellanox/mlx4/cmd.c b/drivers/net/ethernet/mellanox/mlx4/cmd.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/cmd.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/cmd.c
-@@ -418,8 +418,10 @@ static int cmd_pending(struct mlx4_dev *dev)
+@@ -418,8 +418,10 @@ static int cmd_pending(struct mlx4_dev *
  {
  	u32 status;
  
@@ -1809,7 +1780,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	status = readl(mlx4_priv(dev)->cmd.hcr + HCR_STATUS_OFFSET);
  
-@@ -443,8 +445,12 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
+@@ -443,8 +445,12 @@ static int mlx4_cmd_post(struct mlx4_dev
  	  * check the INTERNAL_ERROR flag which is updated under
  	  * device_state_mutex lock.
  	  */
@@ -1822,7 +1793,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/*
  		 * Device is going through error recovery
  		 * and cannot accept commands.
-@@ -457,6 +463,7 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
+@@ -457,6 +463,7 @@ static int mlx4_cmd_post(struct mlx4_dev
  		end += msecs_to_jiffies(GO_BIT_TIMEOUT_MSECS);
  
  	while (cmd_pending(dev)) {
@@ -1830,7 +1801,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (pci_channel_offline(dev->persist->pdev)) {
  			/*
  			 * Device is going through error recovery
-@@ -464,6 +471,7 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
+@@ -464,6 +471,7 @@ static int mlx4_cmd_post(struct mlx4_dev
  			 */
  			goto out;
  		}
@@ -1838,7 +1809,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		if (time_after_eq(jiffies, end)) {
  			mlx4_err(dev, "%s:cmd_pending failed\n", __func__);
-@@ -613,6 +621,7 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
+@@ -613,6 +621,7 @@ static int mlx4_cmd_poll(struct mlx4_dev
  
  	end = msecs_to_jiffies(timeout) + jiffies;
  	while (cmd_pending(dev) && time_before(jiffies, end)) {
@@ -1846,7 +1817,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (pci_channel_offline(dev->persist->pdev)) {
  			/*
  			 * Device is going through error recovery
-@@ -621,6 +630,7 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
+@@ -621,6 +630,7 @@ static int mlx4_cmd_poll(struct mlx4_dev
  			err = -EIO;
  			goto out_reset;
  		}
@@ -1854,7 +1825,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		if (dev->persist->state & MLX4_DEVICE_STATE_INTERNAL_ERROR) {
  			err = mlx4_internal_err_ret_value(dev, op, op_modifier);
-@@ -762,8 +772,10 @@ int __mlx4_cmd(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
+@@ -762,8 +772,10 @@ int __mlx4_cmd(struct mlx4_dev *dev, u64
  	       int out_is_imm, u32 in_modifier, u8 op_modifier,
  	       u16 op, unsigned long timeout, int native)
  {
@@ -1865,11 +1836,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (!mlx4_is_mfunc(dev) || (native && mlx4_is_master(dev))) {
  		int ret;
-diff --git a/drivers/net/ethernet/mellanox/mlx4/eq.c b/drivers/net/ethernet/mellanox/mlx4/eq.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/eq.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/eq.c
-@@ -1136,7 +1136,9 @@ static void mlx4_free_irqs(struct mlx4_dev *dev)
+@@ -1155,7 +1155,9 @@ static void mlx4_free_irqs(struct mlx4_d
  
  	for (i = 0; i < dev->caps.num_comp_vectors + 1; ++i)
  		if (eq_table->eq[i].have_irq) {
@@ -1879,8 +1848,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  #if defined(CONFIG_SMP)
  			irq_set_affinity_hint(eq_table->eq[i].irq, NULL);
  #endif
-diff --git a/drivers/net/ethernet/mellanox/mlx4/main.c b/drivers/net/ethernet/mellanox/mlx4/main.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/main.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/main.c
 @@ -39,7 +39,9 @@
@@ -1893,7 +1860,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #include <linux/delay.h>
  #include <linux/kmod.h>
  
-@@ -447,6 +449,7 @@ static inline int is_in_range(int val, struct mlx4_range *r)
+@@ -447,6 +449,7 @@ static inline int is_in_range(int val, s
  	return (val >= r->min && val <= r->max);
  }
  
@@ -1901,7 +1868,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int parse_array(struct param_data *pdata, char *p, long *vals, u32 n)
  {
  	u32 iter = 0;
-@@ -542,7 +545,9 @@ static int update_defaults(struct param_data *pdata)
+@@ -542,7 +545,9 @@ static int update_defaults(struct param_
  
  	return VALID_DATA;
  }
@@ -1919,7 +1886,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  int mlx4_get_val(struct mlx4_dbdf2val *tbl, struct pci_dev *pdev, int idx,
  		 int *val)
-@@ -860,6 +866,7 @@ static int _mlx4_dev_port(struct mlx4_dev *dev, int port,
+@@ -860,6 +866,7 @@ static int _mlx4_dev_port(struct mlx4_de
  	return 0;
  }
  
@@ -1927,7 +1894,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_dev_port(struct mlx4_dev *dev, int port,
  			 struct mlx4_port_cap *port_cap)
  {
-@@ -872,6 +879,7 @@ static int mlx4_dev_port(struct mlx4_dev *dev, int port,
+@@ -872,6 +879,7 @@ static int mlx4_dev_port(struct mlx4_dev
  
  	return err;
  }
@@ -1935,7 +1902,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static inline void mlx4_enable_ignore_fcs(struct mlx4_dev *dev)
  {
-@@ -1180,6 +1188,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
+@@ -1202,6 +1210,7 @@ static int mlx4_dev_cap(struct mlx4_dev
  	return 0;
  }
  
@@ -1943,7 +1910,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_get_pcie_dev_link_caps(struct mlx4_dev *dev,
  				       enum pci_bus_speed *speed,
  				       enum pcie_link_width *width)
-@@ -1258,6 +1267,7 @@ static void mlx4_check_pcie_caps(struct mlx4_dev *dev)
+@@ -1280,6 +1289,7 @@ static void mlx4_check_pcie_caps(struct
  		  width, width_cap);
  	return;
  }
@@ -1951,7 +1918,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  /*The function checks if there are live vf, return the num of them*/
  static int mlx4_how_many_lives_vf(struct mlx4_dev *dev)
-@@ -1343,6 +1353,7 @@ int mlx4_is_slave_active(struct mlx4_dev *dev, int slave)
+@@ -1365,6 +1375,7 @@ int mlx4_is_slave_active(struct mlx4_dev
  }
  EXPORT_SYMBOL(mlx4_is_slave_active);
  
@@ -1959,7 +1926,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static void slave_adjust_steering_mode(struct mlx4_dev *dev,
  				       struct mlx4_dev_cap *dev_cap,
  				       struct mlx4_init_hca_param *hca_param)
-@@ -1360,6 +1371,7 @@ static void slave_adjust_steering_mode(struct mlx4_dev *dev,
+@@ -1382,6 +1393,7 @@ static void slave_adjust_steering_mode(s
  	mlx4_dbg(dev, "Steering mode is: %s\n",
  		 mlx4_steering_mode_str(dev->caps.steering_mode));
  }
@@ -1967,7 +1934,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static void mlx4_slave_destroy_special_qp_cap(struct mlx4_dev *dev)
  {
-@@ -1375,6 +1387,7 @@ static void mlx4_slave_destroy_special_qp_cap(struct mlx4_dev *dev)
+@@ -1397,6 +1409,7 @@ static void mlx4_slave_destroy_special_q
  	dev->caps.qp1_proxy = NULL;
  }
  
@@ -1975,7 +1942,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_slave_special_qp_cap(struct mlx4_dev *dev)
  {
  	struct mlx4_func_cap *func_cap = NULL;
-@@ -1700,6 +1713,7 @@ free_mem:
+@@ -1729,6 +1742,7 @@ free_mem:
  	kfree(dev_cap);
  	return err;
  }
@@ -1983,7 +1950,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static void mlx4_request_modules(struct mlx4_dev *dev)
  {
-@@ -1716,10 +1730,12 @@ static void mlx4_request_modules(struct mlx4_dev *dev)
+@@ -1745,10 +1759,12 @@ static void mlx4_request_modules(struct
  			has_eth_port = true;
  	}
  
@@ -1996,7 +1963,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  /*
-@@ -2399,6 +2415,7 @@ static void mlx4_slave_exit(struct mlx4_dev *dev)
+@@ -2428,6 +2444,7 @@ static void mlx4_slave_exit(struct mlx4_
  
  static int map_bf_area(struct mlx4_dev *dev)
  {
@@ -2004,7 +1971,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct mlx4_priv *priv = mlx4_priv(dev);
  	resource_size_t bf_start;
  	resource_size_t bf_len;
-@@ -2416,14 +2433,20 @@ static int map_bf_area(struct mlx4_dev *dev)
+@@ -2445,14 +2462,20 @@ static int map_bf_area(struct mlx4_dev *
  		err = -ENOMEM;
  
  	return err;
@@ -2025,7 +1992,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  cycle_t mlx4_read_clock(struct mlx4_dev *dev)
  {
  	u32 clockhi, clocklo, clockhi1;
-@@ -2486,10 +2509,13 @@ static void unmap_internal_clock(struct mlx4_dev *dev)
+@@ -2515,10 +2538,13 @@ static void unmap_internal_clock(struct
  	if (priv->clock_mapping)
  		iounmap(priv->clock_mapping);
  }
@@ -2039,7 +2006,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	unmap_bf_area(dev);
  	if (mlx4_is_slave(dev))
  		mlx4_slave_exit(dev);
-@@ -2507,6 +2533,7 @@ static void mlx4_close_fw(struct mlx4_dev *dev)
+@@ -2536,6 +2562,7 @@ static void mlx4_close_fw(struct mlx4_de
  	}
  }
  
@@ -2047,7 +2014,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_comm_check_offline(struct mlx4_dev *dev)
  {
  #define COMM_CHAN_OFFLINE_OFFSET 0x09
-@@ -2620,6 +2647,7 @@ err_offline:
+@@ -2649,6 +2676,7 @@ err_offline:
  	mutex_unlock(&priv->cmd.slave_cmd_mutex);
  	return -EIO;
  }
@@ -2055,7 +2022,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static void mlx4_parav_master_pf_caps(struct mlx4_dev *dev)
  {
-@@ -2649,6 +2677,7 @@ static int choose_log_fs_mgm_entry_size(int qp_per_entry)
+@@ -2678,6 +2706,7 @@ static int choose_log_fs_mgm_entry_size(
  	return (i <= MLX4_MAX_MGM_LOG_ENTRY_SIZE) ? i : -1;
  }
  
@@ -2063,7 +2030,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static const char *dmfs_high_rate_steering_mode_str(int dmfs_high_steer_mode)
  {
  	switch (dmfs_high_steer_mode) {
-@@ -2671,6 +2700,7 @@ static const char *dmfs_high_rate_steering_mode_str(int dmfs_high_steer_mode)
+@@ -2700,6 +2729,7 @@ static const char *dmfs_high_rate_steeri
  		return "Unrecognized mode";
  	}
  }
@@ -2071,7 +2038,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #define MLX4_DMFS_LOW_QP_COUNT			63
  
-@@ -2772,6 +2802,7 @@ static void choose_tunnel_offload_mode(struct mlx4_dev *dev,
+@@ -2801,6 +2831,7 @@ static void choose_tunnel_offload_mode(s
  		 == MLX4_TUNNEL_OFFLOAD_MODE_VXLAN) ? "vxlan" : "none");
  }
  
@@ -2079,7 +2046,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_validate_optimized_steering(struct mlx4_dev *dev)
  {
  	int i;
-@@ -2800,6 +2831,7 @@ static int mlx4_validate_optimized_steering(struct mlx4_dev *dev)
+@@ -2829,6 +2860,7 @@ static int mlx4_validate_optimized_steer
  
  	return 0;
  }
@@ -2087,7 +2054,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static int mlx4_init_fw(struct mlx4_dev *dev)
  {
-@@ -2851,7 +2883,9 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
+@@ -2880,7 +2912,9 @@ static int mlx4_init_hca(struct mlx4_dev
  		}
  
  		choose_steering_mode(dev, &dev_cap);
@@ -2097,7 +2064,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		choose_tunnel_offload_mode(dev, &dev_cap);
  
  		if (dev->caps.dmfs_high_steer_mode == MLX4_STEERING_DMFS_A0_STATIC &&
-@@ -2915,6 +2949,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
+@@ -2947,6 +2981,7 @@ static int mlx4_init_hca(struct mlx4_dev
  			}
  		}
  
@@ -2105,7 +2072,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/*
  		 * If TS is supported by FW
  		 * read HCA frequency by QUERY_HCA command
-@@ -2977,6 +3012,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
+@@ -3009,6 +3044,7 @@ static int mlx4_init_hca(struct mlx4_dev
  			mlx4_err(dev, "Failed to obtain slave caps\n");
  			goto err_close;
  		}
@@ -2113,7 +2080,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	}
  
  	if (map_bf_area(dev))
-@@ -3006,7 +3042,9 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
+@@ -3038,7 +3074,9 @@ static int mlx4_init_hca(struct mlx4_dev
  	return 0;
  
  unmap_bf:
@@ -2123,7 +2090,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	unmap_bf_area(dev);
  
  	if (mlx4_is_slave(dev))
-@@ -3802,10 +3840,12 @@ static int mlx4_init_affinity_hint(struct mlx4_dev *dev, int port, int eqn)
+@@ -3834,10 +3872,12 @@ static int mlx4_init_affinity_hint(struc
  
  	eq = &priv->eq_table.eq[eqn];
  
@@ -2136,7 +2103,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return 0;
  }
-@@ -4055,8 +4095,10 @@ static int mlx4_get_ownership(struct mlx4_dev *dev)
+@@ -4087,8 +4127,10 @@ static int mlx4_get_ownership(struct mlx
  	void __iomem *owner;
  	u32 ret;
  
@@ -2147,7 +2114,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	owner = ioremap(pci_resource_start(dev->persist->pdev, 0) +
  			MLX4_OWNER_BASE,
-@@ -4075,8 +4117,10 @@ static void mlx4_free_ownership(struct mlx4_dev *dev)
+@@ -4107,8 +4149,10 @@ static void mlx4_free_ownership(struct m
  {
  	void __iomem *owner;
  
@@ -2158,16 +2125,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	owner = ioremap(pci_resource_start(dev->persist->pdev, 0) +
  			MLX4_OWNER_BASE,
-@@ -4093,7 +4137,7 @@ static void mlx4_free_ownership(struct mlx4_dev *dev)
- #define SRIOV_VALID_STATE(flags) (!!((flags) & MLX4_FLAG_SRIOV)	==\
- 				  !!((flags) & MLX4_FLAG_MASTER))
- 
--#ifndef HAVE_PCI_NUM_VF
-+#if defined(HAVE_PCI_NUM_VF) && (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,17))
- static int mlx4_find_vfs(struct pci_dev *pdev)
- {
- 	struct pci_dev *dev;
-@@ -4226,7 +4270,11 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
+@@ -4234,7 +4278,11 @@ static int mlx4_load_one(struct pci_dev
  	INIT_LIST_HEAD(&priv->bf_list);
  	mutex_init(&priv->bf_mutex);
  
@@ -2179,24 +2137,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	dev->numa_node = dev_to_node(&pdev->dev);
  	if (dev->numa_node == -1)
  		dev->numa_node = first_online_node;
-@@ -4266,13 +4314,14 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
- 
- 		if (total_vfs) {
- 			dev->flags = MLX4_FLAG_MASTER;
--#ifdef HAVE_PCI_NUM_VF
-+#if defined(HAVE_PCI_NUM_VF) && (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,17))
- 			existing_vfs = pci_num_vf(pdev);
--#else
-+#ifndef HAVE_PCI_NUM_VF
- 			existing_vfs = mlx4_find_vfs(pdev);
- #endif
- 			if (existing_vfs)
- 				dev->flags |= MLX4_FLAG_SRIOV;
-+#endif
- 			dev->persist->num_vfs = total_vfs;
- 		}
- 	}
-@@ -4419,8 +4468,10 @@ slave_start:
+@@ -4423,8 +4471,10 @@ slave_start:
  	 * No return code for this call, just warn the user in case of PCI
  	 * express device capabilities are under-satisfied by the bus.
  	 */
@@ -2207,7 +2148,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	/* In master functions, the communication channel must be initialized
  	 * after obtaining its address from fw */
-@@ -4639,8 +4690,12 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
+@@ -4643,8 +4693,12 @@ static int __mlx4_init_one(struct pci_de
  	for (i = 0; i < num_vfs_argc;
  	     total_vfs += nvfs[param_map[num_vfs_argc - 1][i]], i++) {
  		int *cur_nvfs = &nvfs[param_map[num_vfs_argc - 1][i]];
@@ -2220,7 +2161,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (*cur_nvfs < 0) {
  			dev_err(&pdev->dev, "num_vfs module parameter cannot be negative\n");
  			err = -EINVAL;
-@@ -4649,8 +4704,12 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
+@@ -4653,8 +4707,12 @@ static int __mlx4_init_one(struct pci_de
  	}
  	for (i = 0; i < probe_vfs_argc; i++) {
  		int *cur_prbvf = &prb_vf[param_map[probe_vfs_argc - 1][i]];
@@ -2233,7 +2174,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (*cur_prbvf < 0) {
  			dev_err(&pdev->dev, "probe_vf module parameter cannot be negative\n");
  			err = -EINVAL;
-@@ -4723,8 +4782,10 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
+@@ -4727,8 +4785,10 @@ static int __mlx4_init_one(struct pci_de
  		}
  	}
  
@@ -2244,7 +2185,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* Detect if this device is a virtual function */
  	if (pci_dev_data & MLX4_PCI_DEV_IS_VF) {
  		/* When acting as pf, we normally skip vfs unless explicitly
-@@ -5176,6 +5237,7 @@ static struct pci_driver mlx4_driver = {
+@@ -5180,6 +5240,7 @@ static struct pci_driver mlx4_driver = {
  
  static int __init mlx4_verify_params(void)
  {
@@ -2252,7 +2193,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	int status;
  
  	status = update_defaults(&port_type_array);
-@@ -5217,6 +5279,7 @@ static int __init mlx4_verify_params(void)
+@@ -5221,6 +5282,7 @@ static int __init mlx4_verify_params(voi
  	} else if (status == INVALID_DATA) {
  		return -1;
  	}
@@ -2260,11 +2201,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (msi_x < 0) {
  		pr_warn("mlx4_core: bad msi_x: %d\n", msi_x);
-diff --git a/drivers/net/ethernet/mellanox/mlx4/mr.c b/drivers/net/ethernet/mellanox/mlx4/mr.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/mr.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/mr.c
-@@ -927,8 +927,12 @@ int mlx4_init_mr_table(struct mlx4_dev *dev)
+@@ -927,8 +927,12 @@ int mlx4_init_mr_table(struct mlx4_dev *
  		return err;
  
  	err = mlx4_buddy_init(&mr_table->mtt_buddy,
@@ -2277,8 +2216,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (err)
  		goto err_buddy;
  
-diff --git a/drivers/net/ethernet/mellanox/mlx4/pd.c b/drivers/net/ethernet/mellanox/mlx4/pd.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/pd.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/pd.c
 @@ -33,7 +33,9 @@
@@ -2316,7 +2253,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct mlx4_priv *priv = mlx4_priv(dev);
  	int idx;
  
-@@ -264,6 +272,9 @@ void mlx4_bf_free(struct mlx4_dev *dev, struct mlx4_bf *bf)
+@@ -264,6 +272,9 @@ void mlx4_bf_free(struct mlx4_dev *dev,
  		list_add(&bf->uar->bf_list, &priv->bf_list);
  
  	mutex_unlock(&priv->bf_mutex);
@@ -2326,11 +2263,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  EXPORT_SYMBOL_GPL(mlx4_bf_free);
  
-diff --git a/drivers/net/ethernet/mellanox/mlx4/port.c b/drivers/net/ethernet/mellanox/mlx4/port.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/port.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/port.c
-@@ -672,6 +672,7 @@ void mlx4_reset_roce_gids(struct mlx4_dev *dev, int slave)
+@@ -672,6 +672,7 @@ void mlx4_reset_roce_gids(struct mlx4_de
  	return;
  }
  
@@ -2338,7 +2273,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  struct roce_gid_table_mbox_entry {
  	u8		gid[MLX4_GID_LEN];
  };
-@@ -782,6 +783,7 @@ void roce_table_entry_copy(int inmod, void *e, struct mlx4_roce_addr *to)
+@@ -782,6 +783,7 @@ void roce_table_entry_copy(int inmod, vo
  		return;
  	}
  }
@@ -2346,7 +2281,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  enum mlx4_set_port_roce_mode {
  	MLX4_SET_PORT_ROCE_MODE_1,
-@@ -824,6 +826,7 @@ static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
+@@ -824,6 +826,7 @@ static int mlx4_common_set_port(struct m
  	port_info = &priv->port[port];
  
  	/* Slaves cannot perform SET_PORT operations except changing MTU */
@@ -2354,7 +2289,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (is_eth) {
  		if (slave != dev->caps.function &&
  		    in_modifier != MLX4_SET_PORT_GENERAL &&
-@@ -996,6 +999,7 @@ static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
+@@ -996,6 +999,7 @@ static int mlx4_common_set_port(struct m
  				MLX4_CMD_SET_PORT, MLX4_CMD_TIME_CLASS_B,
  				MLX4_CMD_NATIVE);
  	}
@@ -2362,8 +2297,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	/* Slaves are not allowed to SET_PORT beacon (LED) blink */
  	if (op_mod == MLX4_SET_PORT_BEACON_OPCODE) {
-diff --git a/drivers/net/ethernet/mellanox/mlx4/reset.c b/drivers/net/ethernet/mellanox/mlx4/reset.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4/reset.c
 +++ b/drivers/net/ethernet/mellanox/mlx4/reset.c
 @@ -76,7 +76,11 @@ int mlx4_reset(struct mlx4_dev *dev)
@@ -2403,8 +2336,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  					       linkctl)) {
  			err = -ENODEV;
  			mlx4_err(dev, "Couldn't restore HCA PCI Express Link control register, aborting\n");
-diff --git a/include/linux/mlx4/device.h b/include/linux/mlx4/device.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/include/linux/mlx4/device.h
 +++ b/include/linux/mlx4/device.h
 @@ -42,11 +42,13 @@
@@ -2419,9 +2350,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  #endif
 +#endif
  
- #define MAX_MSIX_P_PORT		17
- #define MAX_MSIX		1024
-@@ -1606,7 +1608,9 @@ int mlx4_get_roce_gid_from_slave(struct mlx4_dev *dev, int port, int slave_id,
+ #define DEFAULT_UAR_PAGE_SHIFT       12
+ #define DEFAULT_UAR_PAGE_SIZE         (1 << DEFAULT_UAR_PAGE_SHIFT)
+@@ -1656,7 +1658,9 @@ int mlx4_get_roce_gid_from_slave(struct
  int mlx4_FLOW_STEERING_IB_UC_QP_RANGE(struct mlx4_dev *dev, u32 min_range_qpn,
  				      u32 max_range_qpn);
  

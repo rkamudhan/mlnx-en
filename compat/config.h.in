@@ -27,6 +27,12 @@
 /* bond_for_each_slave has 3 parameters */
 #undef HAVE_BOND_FOR_EACH_SLAVE_3_PARAMS
 
+/* CLASS_ATTR_STRING is defined */
+#undef HAVE_CLASS_ATTR_STRING
+
+/* class devnode gets umode_t */
+#undef HAVE_CLASS_DEVNODE_UMODE_T
+
 /* cpu_rmap is defined */
 #undef HAVE_CPU_RMAP
 
@@ -45,8 +51,11 @@
 /* drain_workqueue is defined */
 #undef HAVE_DRAIN_WORKQUEUE
 
-/* is defined */
+/* dst_get_neighbour is defined */
 #undef HAVE_DST_GET_NEIGHBOUR
+
+/* dst_neigh_lookup is defined */
+#undef HAVE_DST_NEIGH_LOOKUP
 
 /* elfcorehdr_addr is exported by the kernel */
 #undef HAVE_ELFCOREHDR_ADDR_EXPORTED
@@ -60,17 +69,29 @@
 /* struct ethtool_ops_ext is defined */
 #undef HAVE_ETHTOOL_OPS_EXT
 
+/* ethtool_ops get_rxnfc gets u32 *rule_locs */
+#undef HAVE_ETHTOOL_OPS_GET_RXNFC_U32_RULE_LOCS
+
 /* eth_get_headlen is defined */
 #undef HAVE_ETH_GET_HEADLEN
 
 /* ETH_SS_RSS_HASH_FUNCS is defined */
 #undef HAVE_ETH_SS_RSS_HASH_FUNCS
 
+/* fdget is defined */
+#undef HAVE_FDGET
+
+/* flowi4, flowi6 is defined */
+#undef HAVE_FLOWI_AF_SPECIFIC_INSTANCES
+
 /* percpu.h has __get_cpu_var */
 #undef HAVE_GET_CPU_VAR
 
 /* HAVE_GET_MODULE_EEPROM is defined */
 #undef HAVE_GET_MODULE_EEPROM
+
+/* HAVE_GET_MODULE_EEPROM_EXT is defined */
+#undef HAVE_GET_MODULE_EEPROM_EXT
 
 /* get_pid_task is exported by the kernel */
 #undef HAVE_GET_PID_TASK_EXPORTED
@@ -81,14 +102,29 @@
 /* get/set_channels is defined in ethtool_ops_ext */
 #undef HAVE_GET_SET_CHANNELS_EXT
 
+/* get/set_flags is defined */
+#undef HAVE_GET_SET_FLAGS
+
+/* get/set_flags is defined in ethtool_ops_ext */
+#undef HAVE_GET_SET_FLAGS_EXT
+
+/* get/set_priv_flags is defined */
+#undef HAVE_GET_SET_PRIV_FLAGS
+
 /* get/set_rxfh is defined */
 #undef HAVE_GET_SET_RXFH
 
 /* get/set_rxfh_indir is defined */
+#undef HAVE_GET_SET_RXFH_INDIR
+
+/* get/set_rxfh_indir is defined */
 #undef HAVE_GET_SET_RXFH_INDIR_EXT
 
-/* get/set_rxfh is defined */
-#undef HAVE_GET_SET_RXFH_OPS_EXT
+/* get/set_tso is defined */
+#undef HAVE_GET_SET_TSO
+
+/* get/set_tso is defined in ethtool_ops_ext */
+#undef HAVE_GET_SET_TSO_EXT
 
 /* get/set_tunable is defined */
 #undef HAVE_GET_SET_TUNABLE
@@ -102,11 +138,26 @@
 /* get_ts_info is defined in ethtool_ops_ext */
 #undef HAVE_GET_TS_INFO_EXT
 
+/* GET_UNUSED_FD_FLAGS is defined */
+#undef HAVE_GET_UNUSED_FD_FLAGS
+
+/* hlist_for_each_entry has 3 params */
+#undef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
+
+/* ib_query_gid takes 5 args */
+#undef HAVE_IB_QUERY_GID_ATTRS
+
 /* ib_signature_type is defined */
 #undef HAVE_IB_SIGNATURE
 
+/* idr_alloc is defined */
+#undef HAVE_IDR_ALLOC
+
 /* idr_alloc_cyclic is defined */
 #undef HAVE_IDR_ALLOC_CYCLIC
+
+/* ieee_getets/ieee_setets is defined and dcbnl defined */
+#undef HAVE_IEEE_DCBNL_ETS
 
 /* ieee_getqcn is defined */
 #undef HAVE_IEEE_GETQCN
@@ -207,6 +258,9 @@
 /* ndo_get_stats64 is defined */
 #undef HAVE_NDO_GET_STATS64
 
+/* ndo_vlan_rx_add_vid has 2 parameters and returns int */
+#undef HAVE_NDO_RX_ADD_VID_HAS_2_PARAMS_RET_INT
+
 /* ndo_vlan_rx_add_vid has 3 parameters */
 #undef HAVE_NDO_RX_ADD_VID_HAS_3_PARAMS
 
@@ -225,6 +279,9 @@
 /* ndo_set_vf_mac is defined */
 #undef HAVE_NDO_SET_VF_MAC
 
+/* addr_assign_type is defined */
+#undef HAVE_NETDEV_ADDR_ASSIGN_TYPE
+
 /* netdev_bonding_info is defined */
 #undef HAVE_NETDEV_BONDING_INFO
 
@@ -237,6 +294,9 @@
 /* is defined */
 #undef HAVE_NETDEV_EXTENDED_NDO_BUSY_POLL
 
+/* is defined */
+#undef HAVE_NETDEV_EXTENDED_WANTED_FEATURES
+
 /* ndo_get_phys_port_id is defined */
 #undef HAVE_NETDEV_EXT_NDO_GET_PHYS_PORT_ID
 
@@ -245,6 +305,9 @@
 
 /* netdev_master_upper_dev_get_rcu is defined */
 #undef HAVE_NETDEV_FOR_EACH_ALL_UPPER_DEV_RCU
+
+/* netdev_for_each_mc_addr is defined */
+#undef HAVE_NETDEV_FOR_EACH_MC_ADDR
 
 /* netdev_get_num_tc is defined */
 #undef HAVE_NETDEV_GET_NUM_TC
@@ -264,11 +327,20 @@
 /* hw_features is defined */
 #undef HAVE_NETDEV_HW_FEATURES
 
+/* IFF_UNICAST_FLT is defined */
+#undef HAVE_NETDEV_IFF_UNICAST_FLT
+
 /* netdev_master_upper_dev_get_rcu is defined */
 #undef HAVE_NETDEV_MASTER_UPPER_DEV_GET_RCU
 
 /* is defined */
 #undef HAVE_NETDEV_NDO_GET_PHYS_PORT_ID
+
+/* ndo_fix_features is defined in net_device_ops_ext */
+#undef HAVE_NETDEV_OPS_EXT_NDO_FIX_FEATURES
+
+/* ndo_set_features is defined in net_device_ops_ext */
+#undef HAVE_NETDEV_OPS_EXT_NDO_SET_FEATURES
 
 /* ndo_set_vf_link_state is defined */
 #undef HAVE_NETDEV_OPS_EXT_NDO_SET_VF_LINK_STATE
@@ -297,11 +369,20 @@
 /* netdev_txq_bql_complete_prefetchw is defined */
 #undef HAVE_NETDEV_TXQ_BQL_PREFETCHW
 
+/* is defined */
+#undef HAVE_NETDEV_UPDATE_FEATURES
+
 /* vlan_features is defined */
 #undef HAVE_NETDEV_VLAN_FEATURES
 
+/* wanted_features is defined */
+#undef HAVE_NETDEV_WANTED_FEATURES
+
 /* netdev_features.h has NETIF_F_HW_CSUM */
 #undef HAVE_NETIF_F_HW_CSUM
+
+/* NETIF_F_HW_VLAN_STAG_RX is defined in netdev_features.h */
+#undef HAVE_NETIF_F_HW_VLAN_STAG_RX
 
 /* NETIF_F_RXALL is defined in netdev_features.h */
 #undef HAVE_NETIF_F_RXALL
@@ -315,17 +396,32 @@
 /* netif_keep_dst is defined */
 #undef HAVE_NETIF_KEEP_DST
 
+/* netif_set_real_num_rx_queues is defined */
+#undef HAVE_NETIF_SET_REAL_NUM_RX_QUEUES
+
 /* netif_set_real_num_tx_queues is defined */
 #undef HAVE_NETIF_SET_REAL_NUM_TX_QUEUES
 
 /* is defined */
 #undef HAVE_NETIF_SET_XPS_QUEUE
 
+/* netlink_dump_control dump is defined */
+#undef HAVE_NETLINK_DUMP_CONTROL_DUMP
+
+/* netlink_dump_control module is defined */
+#undef HAVE_NETLINK_DUMP_CONTROL_MODULE
+
 /* is defined */
 #undef HAVE_NETLINK_DUMP_START_5P
 
 /* is defined */
 #undef HAVE_NETLINK_DUMP_START_6P
+
+/* netlink_kernel_cfg input is defined */
+#undef HAVE_NETLINK_KERNEL_CFG_INPUT
+
+/* netlink_kernel_create has 3 params */
+#undef HAVE_NETLINK_KERNEL_CREATE_3_PARAMS
 
 /* struct netns_ipv4 has sysctl_tcp_mem */
 #undef HAVE_NETNS_IPV4_SYSCTL_TCP_MEM
@@ -348,6 +444,9 @@
 /* sendmsg has 4 parameters */
 #undef HAVE_NET_SENDMSG_4_PARAMS
 
+/* ib signature new api is defined */
+#undef HAVE_NEW_SIGNATURE_API
+
 /* alloc_etherdev_mqs, alloc_etherdev_mqs, num_tc extended is defined */
 #undef HAVE_NEW_TX_RING_SCHEME
 
@@ -357,8 +456,14 @@
 /* pci_bus_speed is defined */
 #undef HAVE_PCI_BUS_SPEED
 
+/* PCI_DEV_FLAGS_ASSIGNED is defined */
+#undef HAVE_PCI_DEV_FLAGS_ASSIGNED
+
 /* pcie_mpss is defined */
 #undef HAVE_PCI_DEV_PCIE_MPSS
+
+/* pci_driver sriov_configure is defined */
+#undef HAVE_PCI_DRIVER_SRIOV_CONFIGURE
 
 /* pci_enable_msix_range is defined */
 #undef HAVE_PCI_ENABLE_MSIX_RANGE
@@ -375,8 +480,11 @@
 /* pci_physfn is defined */
 #undef HAVE_PCI_PHYSFN
 
+/* pci_sriov_get_totalvfs is defined */
+#undef HAVE_PCI_SRIOV_GET_TOTALVFS
+
 /* pci_vfs_assigned is defined */
-#undef HAVE_PCI_VF_ASSIGNED
+#undef HAVE_PCI_VFS_ASSIGNED
 
 /* PDE_DATA is defined */
 #undef HAVE_PDE_DATA
@@ -414,6 +522,9 @@
 /* __put_task_struct is exported by the kernel */
 #undef HAVE_PUT_TASK_STRUCT_EXPORTED
 
+/* register_net_sysctl is defined */
+#undef HAVE_REGISTER_NET_SYSCTL
+
 /* struct request_queue has request_fn_active */
 #undef HAVE_REQUEST_QUEUE_REQUEST_FN_ACTIVE
 
@@ -431,6 +542,12 @@
 
 /* rt_uses_gateway is defined */
 #undef HAVE_RT_USES_GATEWAY
+
+/* get_rxfh_indir_size is defined */
+#undef HAVE_RXFH_INDIR_SIZE
+
+/* get_rxfh_indir_size is defined in ethtool_ops_ext */
+#undef HAVE_RXFH_INDIR_SIZE_EXT
 
 /* scsi_prot_interval is defined */
 #undef HAVE_SCSI_PROT_INTERVAL
@@ -477,6 +594,12 @@
 /* skb_set_hash is defined */
 #undef HAVE_SKB_SET_HASH
 
+/* skb_shared_info has union tx_flags */
+#undef HAVE_SKB_SHARED_INFO_UNION_TX_FLAGS
+
+/* sk_alloc has 5 parameter */
+#undef HAVE_SK_ALLOC_5_PARAMS
+
 /* csum_level is defined */
 #undef HAVE_SK_BUFF_CSUM_LEVEL
 
@@ -498,6 +621,9 @@
 /* sock.h has sk_v6_rcv_saddr */
 #undef HAVE_SK_V6_RCV_SADDR
 
+/* sk_wait_data has 3 params */
+#undef HAVE_SK_WAIT_DATA_3_PARAMS
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
 
@@ -518,6 +644,9 @@
 
 /* sc_reader defined */
 #undef HAVE_SVCXPRT_RDMA_SC_READER
+
+/* svc_rdma_get_page defined */
+#undef HAVE_SVC_RDMA_GET_PAGE
 
 /* svc_rdma_rcl_chunk_counts defined */
 #undef HAVE_SVC_RDMA_RCL_CHUNK_COUNTS

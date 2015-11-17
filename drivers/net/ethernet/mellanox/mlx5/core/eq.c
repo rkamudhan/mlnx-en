@@ -254,7 +254,9 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 			rsn = be32_to_cpu(eqe->data.qp_srq.qp_srq_n) & 0xffffff;
 			mlx5_core_dbg(dev, "event %s(%d) arrived on resource 0x%x\n",
 				      eqe_type_str(eqe->type), eqe->type, rsn);
-			mlx5_rsc_event(dev, rsn, eqe->type);
+			mlx5_rsc_event(dev,
+				       rsn | (eqe->data.qp_srq.type << 24),
+				       eqe->type);
 			break;
 
 		case MLX5_EVENT_TYPE_SRQ_RQ_LIMIT:
@@ -311,6 +313,9 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 			mlx5_eq_pagefault(dev, eqe);
 			break;
 #endif
+		case MLX5_EVENT_TYPE_NIC_VPORT_CHANGE:
+			mlx5_vport_change(dev, eqe);
+			break;
 
 		default:
 			mlx5_core_warn(dev, "Unhandled event 0x%x on EQ 0x%x\n",
@@ -484,6 +489,11 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 
 	if (MLX5_CAP_GEN(dev, pg))
 		async_event_mask |= (1ull << MLX5_EVENT_TYPE_PAGE_FAULT);
+
+	if (MLX5_CAP_GEN(dev, port_type) == MLX5_CAP_PORT_TYPE_ETH &&
+	    MLX5_CAP_GEN(dev, vport_group_manager) &&
+	    MLX5_CAP_GEN(dev, nic_vport_change_event))
+		async_event_mask |= (1ull << MLX5_EVENT_TYPE_NIC_VPORT_CHANGE);
 
 	err = mlx5_create_map_eq(dev, &table->cmd_eq, MLX5_EQ_VEC_CMD,
 				 MLX5_NUM_CMD_EQE, 1ull << MLX5_EVENT_TYPE_CMD,

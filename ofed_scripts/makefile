@@ -29,8 +29,12 @@ ifeq ($(CONFIG_COMPAT_TEST), y)
 CFLAGS += -DCONFIG_COMPAT_TEST
 endif
 
-CC  = $(CROSS_COMPILE)gcc
-CPP = $(CC) -E
+CC  ?= $(CROSS_COMPILE)gcc
+CPP ?= $(CC) -E
+
+ifneq ($(CC),cc)
+override WITH_MAKE_PARAMS += CC=$(CC)
+endif
 
 # try-run
 # Usage: option = $(call try-run, $(CC)...-o "$$TMP",option-ok,otherwise)

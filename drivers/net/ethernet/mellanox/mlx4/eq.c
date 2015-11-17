@@ -614,10 +614,19 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 							 " to slave: %d, port:%d\n",
 							 __func__, i, port);
 #ifdef HAVE_LINKSTATE
-						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
-						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state)
+						s_info = &priv->mfunc.master.vf_oper[i].vport[port].state;
+						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state) {
+							eqe->event.port_change.port =
+								cpu_to_be32(
+								(be32_to_cpu(eqe->event.port_change.port) & 0xFFFFFFF)
+								| (mlx4_phys_to_slave_port(dev, i, port) << 28));
 							mlx4_slave_event(dev, i, eqe);
+						}
 #else
+						eqe->event.port_change.port =
+							cpu_to_be32(
+							(be32_to_cpu(eqe->event.port_change.port) & 0xFFFFFFF)
+							| (mlx4_phys_to_slave_port(dev, i, port) << 28));
 						mlx4_slave_event(dev, i, eqe);
 #endif
 					} else {  /* IB port */
@@ -646,10 +655,19 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 						if (i == mlx4_master_func_num(dev))
 							continue;
 #ifdef HAVE_LINKSTATE
-						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
-						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state)
+						s_info = &priv->mfunc.master.vf_oper[i].vport[port].state;
+						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state) {
+							eqe->event.port_change.port =
+								cpu_to_be32(
+								(be32_to_cpu(eqe->event.port_change.port) & 0xFFFFFFF)
+								| (mlx4_phys_to_slave_port(dev, i, port) << 28));
 							mlx4_slave_event(dev, i, eqe);
+						}
 #else
+						eqe->event.port_change.port =
+							cpu_to_be32(
+							(be32_to_cpu(eqe->event.port_change.port) & 0xFFFFFFF)
+							| (mlx4_phys_to_slave_port(dev, i, port) << 28));
 						mlx4_slave_event(dev, i, eqe);
 #endif
 					}
@@ -944,8 +962,9 @@ static void __iomem *mlx4_get_eq_uar(struct mlx4_dev *dev, struct mlx4_eq *eq)
 	if (!priv->eq_table.uar_map[index]) {
 		priv->eq_table.uar_map[index] =
 			ioremap(pci_resource_start(dev->persist->pdev, 2) +
-				((eq->eqn / 4) << PAGE_SHIFT),
-				PAGE_SIZE);
+			((eq->eqn / 4) << DEFAULT_UAR_PAGE_SHIFT),
+			DEFAULT_UAR_PAGE_SIZE);
+
 		if (!priv->eq_table.uar_map[index]) {
 			mlx4_err(dev, "Couldn't map EQ doorbell for EQN 0x%06x\n",
 				 eq->eqn);
@@ -1272,7 +1291,7 @@ int mlx4_init_eq_table(struct mlx4_dev *dev)
 					     eq);
 		}
 		if (err)
-			goto err_out_unmap;
+			goto err_out_unmap_excluded;
 	}
 
 	if (dev->flags & MLX4_FLAG_MSI_X) {
@@ -1318,8 +1337,10 @@ int mlx4_init_eq_table(struct mlx4_dev *dev)
 	return 0;
 
 err_out_unmap:
-	while (i >= 0)
-		mlx4_free_eq(dev, &priv->eq_table.eq[i--]);
+	mlx4_free_eq(dev, &priv->eq_table.eq[i]);
+err_out_unmap_excluded:
+	while (i > 0)
+		mlx4_free_eq(dev, &priv->eq_table.eq[--i]);
 #ifdef CONFIG_RFS_ACCEL
 	for (i = 1; i <= dev->caps.num_ports; i++) {
 		if (mlx4_priv(dev)->port[i].rmap) {

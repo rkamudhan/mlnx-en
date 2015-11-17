@@ -14,6 +14,10 @@
 #include <linux/in.h>
 #include <linux/bitmap.h>
 #include <linux/ethtool.h>
+#include <linux/string.h>
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,16))
+#include <linux/uaccess.h>
+#endif
 
 #define roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
 
@@ -27,6 +31,11 @@
 #ifndef __packed
 #define __packed                   __attribute__((packed))
 #endif
+
+static inline long IS_ERR_OR_NULL(const void *ptr)
+{
+	return !ptr || IS_ERR_VALUE((unsigned long)ptr);
+}
 
 /* Taken from compat-2.6.37.h */
 extern void *vzalloc(unsigned long size);
@@ -92,7 +101,7 @@ typedef unsigned long             uintptr_t;
 #define NETIF_F_GSO_UDP_TUNNEL (1 << 25)
 #endif
 
-typedef enum netdev_tx netdev_tx_t;
+typedef int netdev_tx_t;
 
 #define VLAN_N_VID              4096
 
@@ -290,6 +299,39 @@ static inline bool is_unicast_ether_addr(const u8 *addr)
 
 #define order_base_2(n) ilog2(roundup_pow_of_two(n))
 
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,16))
+/**
+ * list_prev_entry - get the prev element in list
+ * @pos:	the type * to cursor
+ * @member:	the name of the list_head within the struct.
+ */
+#define list_prev_entry(pos, member) \
+	list_entry((pos)->member.prev, typeof(*(pos)), member)
+
+#define list_for_each_entry_continue_reverse(pos, head, member)		\
+	for (pos = list_prev_entry(pos, member);			\
+	     &pos->member != (head);					\
+	     pos = list_prev_entry(pos, member))
+#endif
+
+#undef WARN_ON
+#define WARN_ON(condition) ({						\
+	int __ret_warn_on = !!(condition);				\
+	if (unlikely(__ret_warn_on))					\
+		dump_stack();						\
+	unlikely(__ret_warn_on);					\
+})
+
+static inline const char *kstrdup_const(const char *s, gfp_t gfp)
+{
+	return kstrdup(s, gfp);
+}
+
+static inline void kfree_const(const void *x)
+{
+	kfree(x);
+}
+
 #define SUPPORTED_Backplane             (1 << 16)
 #define SUPPORTED_1000baseKX_Full       (1 << 17)
 #define SUPPORTED_10000baseKX4_Full     (1 << 18)
@@ -361,6 +403,40 @@ static inline u16 skb_get_queue_mapping(struct sk_buff *skb)
 #define skb_record_rx_queue LINUX_BACKPORT(skb_record_rx_queue)
 static inline void skb_record_rx_queue(struct sk_buff *skb, u16 rx_queue)
 {
+}
+
+/**
+ * __skb_frag_set_page - sets the page contained in a paged fragment
+ * @frag: the paged fragment
+ * @page: the page to set
+ *
+ * Sets the fragment @frag to contain @page.
+ */
+#define __skb_frag_set_page LINUX_BACKPORT(__skb_frag_set_page)
+static inline void __skb_frag_set_page(skb_frag_t *frag, struct page *page)
+{
+	frag->page = page;
+}
+
+/**
+ * skb_frag_set_page - sets the page contained in a paged fragment of an skb
+ * @skb: the buffer
+ * @f: the fragment offset
+ * @page: the page to set
+ *
+ * Sets the @f'th fragment of @skb to contain @page.
+ */
+#define skb_frag_set_page LINUX_BACKPORT(skb_frag_set_page)
+static inline void skb_frag_set_page(struct sk_buff *skb, int f,
+				     struct page *page)
+{
+	__skb_frag_set_page(&skb_shinfo(skb)->frags[f], page);
+}
+
+#define skb_frag_size_set LINUX_BACKPORT(skb_frag_size_set)
+static inline void skb_frag_size_set(skb_frag_t *frag, unsigned int size)
+{
+	frag->size = size;
 }
 
 #endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)) */

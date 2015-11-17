@@ -105,6 +105,9 @@ __mlx5_mask(typ, fld))
 	___t; \
 })
 
+#define MLX5E_FILLER_CQE_BIT     0x8000
+#define MLX5E_IS_FILLER_CQE(bc)  (bc & (MLX5E_FILLER_CQE_BIT))
+
 enum {
 	MLX5_MAX_COMMANDS		= 32,
 	MLX5_CMD_DATA_BLOCK_SIZE	= 512,
@@ -227,6 +230,12 @@ enum {
 #define MLX5_UMR_MTT_MASK      (MLX5_UMR_MTT_ALIGNMENT - 1)
 #define MLX5_UMR_MTT_MIN_CHUNK_SIZE MLX5_UMR_MTT_ALIGNMENT
 
+enum {
+	MLX5_EVENT_QUEUE_TYPE_QP = 0,
+	MLX5_EVENT_QUEUE_TYPE_RQ = 1,
+	MLX5_EVENT_QUEUE_TYPE_SQ = 2,
+};
+
 enum mlx5_event {
 	MLX5_EVENT_TYPE_COMP		   = 0x0,
 
@@ -255,6 +264,7 @@ enum mlx5_event {
 	MLX5_EVENT_TYPE_PAGE_REQUEST	   = 0xb,
 
 	MLX5_EVENT_TYPE_PAGE_FAULT	   = 0xc,
+	MLX5_EVENT_TYPE_NIC_VPORT_CHANGE   = 0xd,
 
 	MLX5_EVENT_TYPE_DCT_DRAINED	   = 0x1c,
 	MLX5_EVENT_TYPE_DCT_KEY_VIOLATION  = 0x1d,
@@ -288,15 +298,18 @@ enum {
 	MLX5_DEV_CAP_FLAG_DCT		= 1LL << 37,
 	MLX5_DEV_CAP_FLAG_SIG_HAND_OVER	= 1LL << 40,
 	MLX5_DEV_CAP_FLAG_CMDIF_CSUM	= 3LL << 46,
+	MLX5_DEV_CAP_FLAG_DRAIN_SIGERR	= 1LL << 48,
 };
 
 enum {
 	MLX5_ROCE_VERSION_1		= 0,
+	MLX5_ROCE_VERSION_1_5		= 1,
 	MLX5_ROCE_VERSION_2		= 2,
 };
 
 enum {
 	MLX5_ROCE_VERSION_1_CAP		= 1 << MLX5_ROCE_VERSION_1,
+	MLX5_ROCE_VERSION_1_5_CAP	= 1 << MLX5_ROCE_VERSION_1_5,
 	MLX5_ROCE_VERSION_2_CAP		= 1 << MLX5_ROCE_VERSION_2,
 };
 
@@ -341,7 +354,7 @@ enum {
 	MLX5_OPCODE_RCHECK_PSV		= 0x27,
 
 	MLX5_OPCODE_UMR			= 0x25,
-
+	MLX5_OPCODE_SIGNATURE_CANCELED  = (1 << 15),
 };
 
 enum {
@@ -394,6 +407,18 @@ struct mlx5_odp_caps {
 		__be32			ud_odp_caps;
 	} per_transport_caps;
 	char reserved2[0xe4];
+};
+
+struct mlx5_cmd_set_dc_cnak_mbox_in {
+	struct mlx5_inbox_hdr	hdr;
+	u8			enable;
+	u8			reserved[47];
+	__be64			pa;
+};
+
+struct mlx5_cmd_set_dc_cnak_mbox_out {
+	struct mlx5_outbox_hdr	hdr;
+	u8			rsvd[8];
 };
 
 struct mlx5_cmd_layout {
@@ -450,7 +475,9 @@ struct mlx5_eqe_comp {
 };
 
 struct mlx5_eqe_qp_srq {
-	__be32	reserved[6];
+	__be32	reserved1[5];
+	u8	type;
+	u8	reserved2[3];
 	__be32	qp_srq_n;
 };
 
@@ -514,6 +541,12 @@ struct mlx5_eqe_page_fault {
 	__be32 flags_qpn;
 } __packed;
 
+struct mlx5_eqe_vport_change {
+	u8		rsvd0[2];
+	__be16		vport_num;
+	__be32		rsvd1[6];
+} __packed;
+
 struct mlx5_eqe_dct {
 	__be32	reserved[6];
 	__be32	dctn;
@@ -531,6 +564,7 @@ union ev_data {
 	struct mlx5_eqe_stall_vl	stall_vl;
 	struct mlx5_eqe_page_req	req_pages;
 	struct mlx5_eqe_page_fault	page_fault;
+	struct mlx5_eqe_vport_change	vport_change;
 	struct mlx5_eqe_dct		dct;
 } __packed;
 
@@ -574,7 +608,8 @@ struct mlx5_err_cqe {
 };
 
 struct mlx5_cqe64 {
-	u8		rsvd0[4];
+	u8              rsvd0[2];
+        __be16          wqe_id;
 	u8		lro_tcppsh_abort_dupack;
 	u8		lro_min_ttl;
 	__be16		lro_tcp_win;
@@ -600,6 +635,37 @@ struct mlx5_cqe64 {
 	u8		op_own;
 };
 
+struct mlx5_mini_cqe8 {
+	union {
+		u32 rx_hash_result;
+		u32 checksum;
+		struct {
+			u16 wqe_counter;
+			u8  s_wqe_opcode;
+			u8  reserved;
+		} s_wqe_info;
+	};
+	u32 byte_cnt;
+};
+
+enum {
+	MLX5_NO_INLINE_DATA,
+	MLX5_INLINE_DATA32_SEG,
+	MLX5_INLINE_DATA64_SEG,
+	MLX5_COMPRESSED,
+};
+
+enum mlx5_exp_cqe_zip_recv_type {
+	MLX5_CQE_FORMAT_HASH,
+	MLX5_CQE_FORMAT_CSUM,
+};
+
+static inline int mlx5_get_cqe_format(struct mlx5_cqe64 *cqe)
+{
+#define MLX5E_CQE_FORMAT_MASK 0xc
+	return (cqe->op_own & MLX5E_CQE_FORMAT_MASK) >> 2;
+}
+
 static inline int get_cqe_lro_tcppsh(struct mlx5_cqe64 *cqe)
 {
 	return (cqe->lro_tcppsh_abort_dupack >> 6) & 1;
@@ -613,6 +679,16 @@ static inline u8 get_cqe_l4_hdr_type(struct mlx5_cqe64 *cqe)
 static inline int cqe_has_vlan(struct mlx5_cqe64 *cqe)
 {
 	return !!(cqe->l4_hdr_type_etc & 0x1);
+}
+
+static inline u16 cqe_get_stride_bytes_recv(struct mlx5_cqe64 *cqe)
+{
+	return be16_to_cpu((cqe->byte_cnt >> 16));
+}
+
+static inline u16 cqe_get_consumed_strides(struct mlx5_cqe64 *cqe)
+{
+return be16_to_cpu((cqe->byte_cnt & 0xffff));
 }
 
 enum {
@@ -1092,6 +1168,12 @@ enum {
 	MLX5_FLOW_CONTEXT_DEST_TYPE_TIR		= 2,
 };
 
+enum mlx5_list_type {
+	MLX5_NVPRT_LIST_TYPE_UC   = 0x0,
+	MLX5_NVPRT_LIST_TYPE_MC   = 0x1,
+	MLX5_NVPRT_LIST_TYPE_VLAN = 0x2,
+};
+
 enum {
 	MLX5_RQC_RQ_TYPE_MEMORY_RQ_INLINE = 0x0,
 	MLX5_RQC_RQ_TYPE_MEMORY_RQ_RPM    = 0x1,
@@ -1123,7 +1205,19 @@ enum {
 	MLX5_RFC_3635_COUNTERS_GROUP	      = 0x3,
 	MLX5_ETHERNET_EXTENDED_COUNTERS_GROUP = 0x5,
 	MLX5_PER_PRIORITY_COUNTERS_GROUP      = 0x10,
-	MLX5_PER_TRAFFIC_CLASS_COUNTERS_GROUP = 0x11
+	MLX5_PER_TRAFFIC_CLASS_COUNTERS_GROUP = 0x11,
+	MLX5_PHYSICAL_LAYER_COUNTERS_GROUP    = 0x12,
+};
+
+/* From mlx5-abi.h */
+enum {
+	MLX5_NUM_UUARS_PER_PAGE	= MLX5_NON_FP_BF_REGS_PER_PAGE,
+	MLX5_DEF_TOT_UUARS		= 8 * MLX5_NUM_UUARS_PER_PAGE,
+};
+
+enum {
+	NUM_DRIVER_UARS		= 4,
+	NUM_LOW_LAT_UUARS	= 4,
 };
 
 /* MLX5 DEV CAPs */
@@ -1143,6 +1237,8 @@ enum mlx5_cap_type {
 	MLX5_CAP_IPOIB_OFFLOADS,
 	MLX5_CAP_EOIB_OFFLOADS,
 	MLX5_CAP_FLOW_TABLE,
+	MLX5_CAP_ESWITCH_FLOW_TABLE,
+	MLX5_CAP_ESWITCH,
 	/* NUM OF CAP Types */
 	MLX5_CAP_NUM
 };
@@ -1180,6 +1276,28 @@ enum mlx5_cap_type {
 #define MLX5_CAP_FLOWTABLE_MAX(mdev, cap) \
 	MLX5_GET(flow_table_nic_cap, mdev->hca_caps_max[MLX5_CAP_FLOW_TABLE], cap)
 
+#define MLX5_CAP_ESW_FLOWTABLE(mdev, cap) \
+	MLX5_GET(flow_table_eswitch_cap, \
+		 mdev->hca_caps_cur[MLX5_CAP_ESWITCH_FLOW_TABLE], cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_MAX(mdev, cap) \
+	MLX5_GET(flow_table_eswitch_cap, \
+		 mdev->hca_caps_max[MLX5_CAP_ESWITCH_FLOW_TABLE], cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_FDB(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE(dev, flow_table_properties_nic_esw_fdb.cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_FDB_MAX(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE_MAX(dev, flow_table_properties_nic_esw_fdb.cap)
+
+#define MLX5_CAP_ESW(mdev, cap) \
+	MLX5_GET(e_switch_cap, \
+		 mdev->hca_caps_cur[MLX5_CAP_ESWITCH], cap)
+
+#define MLX5_CAP_ESW_MAX(mdev, cap) \
+	MLX5_GET(e_switch_cap, \
+		 mdev->hca_caps_max[MLX5_CAP_ESWITCH], cap)
+
 #define MLX5_CAP_ODP(mdev, cap)\
 	MLX5_GET(odp_cap, mdev->hca_caps_cur[MLX5_CAP_ODP], cap)
 
@@ -1197,5 +1315,7 @@ enum mlx5_cap_type {
 		 MLX5_ADDR_OF(odp_cap, mdev->hca_caps_max[MLX5_CAP_ODP],\
 			      trans),\
 		 odp_pt_cap)
+
+#define MLX5_NUM_BYPASS_FTS	5
 
 #endif /* MLX5_DEVICE_H */

@@ -64,8 +64,8 @@
 #include "mlx4_stats.h"
 
 #define DRV_NAME	"mlx4_en"
-#define DRV_VERSION	"3.0-1.0.1"
-#define DRV_RELDATE	"Feb 2014"
+#define DRV_VERSION	"3.1-1.0.4"
+#define DRV_RELDATE	"30 Sep 2015"
 
 #ifndef CONFIG_COMPAT_DISABLE_DCB
 #ifdef CONFIG_MLX4_EN_DCB
@@ -88,7 +88,7 @@
 #endif
 #endif
 
-#if !defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+#if !defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && !defined(HAVE_GET_SET_RXFH_INDIR)
 #define CONFIG_SYSFS_INDIR_SETTING
 #endif
 
@@ -150,8 +150,10 @@ enum {
 	MLX4_EN_PRIV_FLAGS_FS_EN_UDP = (1 << 4),
 	MLX4_EN_PRIV_FLAGS_DISABLE_32_14_4_E = (1 << 5),
 	MLX4_EN_PRIV_FLAGS_INLINE_SCATTER = (1 << 6),
-	MLX4_EN_PRIV_FLAGS_RXFCS = (1 << 7),
-	MLX4_EN_PRIV_FLAGS_RXALL = (1 << 8),
+	MLX4_EN_PRIV_FLAGS_PHV = (1 << 7),
+	MLX4_EN_PRIV_FLAGS_RXFCS = (1 << 8),
+	MLX4_EN_PRIV_FLAGS_RXALL = (1 << 9),
+	MLX4_EN_PRIV_FLAGS_RSS_HASH_XOR = (1 << 10),
 };
 
 #define MLX4_EN_WATCHDOG_TIMEOUT	(15 * HZ)
@@ -208,7 +210,7 @@ enum {
 #define MLX4_EN_RX_COAL_TIME	0x10
 
 #define MLX4_EN_TX_COAL_PKTS	16
-#define MLX4_EN_TX_COAL_TIME	0x10
+#define MLX4_EN_TX_COAL_TIME	8
 
 #define MLX4_EN_RX_RATE_LOW		400000
 #define MLX4_EN_RX_COAL_TIME_LOW	0
@@ -238,6 +240,8 @@ enum {
 
 #define MLX4_EN_LOOPBACK_RETRIES	5
 #define MLX4_EN_LOOPBACK_TIMEOUT	100
+
+#define MLX4_EN_TS_CYCLES_SHIFT 	29
 
 #ifdef MLX4_EN_PERF_STAT
 /* Number of samples to 'average' */
@@ -1096,7 +1100,13 @@ do {									\
 		dev_name(&(mdev)->pdev->dev), ##__VA_ARGS__)
 
 #ifdef CONFIG_SYSFS_INDIR_SETTING
-u32 mlx4_en_get_rxfh_indir_size(struct net_device *dev);
+static inline u32 mlx4_en_get_rxfh_indir_size(struct net_device *dev)
+{
+        struct mlx4_en_priv *priv = netdev_priv(dev);
+
+        return priv->rx_ring_num;
+}
+
 int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index);
 int mlx4_en_set_rxfh_indir(struct net_device *dev, const u32 *ring_index);
 #endif

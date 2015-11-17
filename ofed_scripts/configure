@@ -420,6 +420,21 @@ main()
                         -kernel-sources=* | --kernel-sources=* | --kernel-src=* | --kern-src=* | --ker-src=*)
                                 KSRC=`expr "x$1" : 'x[^=]*=\(.*\)'`
                         ;;
+                        -with-git | --with-git)
+                                WITH_GIT="yes"
+                                if [ ! -z "$2" ] && [ "`echo -n $2 | cut -c 1`" != '-' ]; then
+                                        shift
+                                        GIT_BRANCH=$1
+                                fi
+                                ofed_patch_params="$ofed_patch_params $1 $GIT_BRANCH"
+                        ;;
+                        -with-git=* | --with-git=*)
+                                ofed_patch_params="$ofed_patch_params $1"
+                        ;;
+                        --without-git)
+                                WITH_GIT="no"
+                                ofed_patch_params="$ofed_patch_params $1"
+                        ;;
                         -with-quilt | --with-quilt)
                                 ofed_patch_params="$ofed_patch_params $1"
                                 if [ ! -z "$2" ] && [ "`echo -n $2 | cut -c 1`" != '-' ]; then
@@ -1024,9 +1039,9 @@ if [ ! -e backports_applied ]; then
 	if [ ! -z "$CONFIG_COMPAT_VERSION" ]; then
 		# if it's SLES10, then apply 2.6.18 backport patches first
 		if [ "X$CONFIG_COMPAT_VERSION" == "X-2.6.16" ]; then
-			ex ${CWD}/ofed_scripts/ofed_patch.sh --with-patchdir=backports-2.6.18
+			ex ${CWD}/ofed_scripts/ofed_patch.sh --with-patchdir=backports-2.6.18 ${ofed_patch_params}
 		fi
-		ex ${CWD}/ofed_scripts/ofed_patch.sh --with-patchdir=backports${CONFIG_COMPAT_VERSION}
+		ex ${CWD}/ofed_scripts/ofed_patch.sh --with-patchdir=backports${CONFIG_COMPAT_VERSION} ${ofed_patch_params}
 	fi
 fi
 

@@ -7,6 +7,20 @@ usage()
         echo "-v, --verbose             print more info"
 }
 
+function find_pdev()
+{
+	pdevlist=$(ls /sys/bus/pci/devices)
+
+	for pdev in $pdevlist; do
+		if [ -d /sys/bus/pci/devices/$pdev/infiniband ]; then
+			ibd=$(ls /sys/bus/pci/devices/$pdev/infiniband/)
+			if [ "x$ibd" == "x$1" ]; then
+				echo -n $pdev
+			fi
+		fi
+	done
+}
+
 case $1 in
         "-h" | "--help")
                 usage
@@ -86,6 +100,7 @@ if [ "x$oldstyle" == "xn" ]; then
 							link_state="NA"
 						fi
 
+						x=$(find_pdev $d)
 						if [ "$1" == "-v" ]; then
 							filepath_portstate=/sys/class/infiniband/$d/ports/$port/state
 							filepath_deviceid=/sys/class/infiniband/$d/device/device
@@ -125,8 +140,7 @@ if [ "x$oldstyle" == "xn" ]; then
 								devdesc=""
 								partid="NA"
 							fi
-
-							echo "$d ($devid - $partid) $devdesc fw $fwver port $port ($ibstate) ==> $eth ($link_state)"
+							echo "$x $d ($devid - $partid) $devdesc fw $fwver port $port ($ibstate) ==> $eth ($link_state)"
 						else
 							echo "$d port $port ==> $eth ($link_state)"
 						fi

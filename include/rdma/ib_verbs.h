@@ -213,7 +213,8 @@ enum ib_device_cap_flags {
 	IB_DEVICE_SHARED_MR			= (1ULL<<33),
 	IB_DEVICE_ROCE_MODE_1_5		= (1ULL<<34),
 	IB_DEVICE_ROCE_MODE_2		= (1ULL<<35),
-	IB_DEVICE_INDIR_REGISTRATION	= (1ULL<<36)
+	IB_DEVICE_INDIR_REGISTRATION	= (1ULL<<36),
+	IB_DEVICE_SIGNATURE_RESP_PIPE	= (1ULL<<37),
 };
 
 enum ib_signature_prot_cap {
@@ -400,7 +401,8 @@ enum ib_port_speed {
 	IB_SPEED_QDR	= 4,
 	IB_SPEED_FDR10	= 8,
 	IB_SPEED_FDR	= 16,
-	IB_SPEED_EDR	= 32
+	IB_SPEED_EDR	= 32,
+	IB_SPEED_HDR	= 64
 };
 
 struct ib_protocol_stats {
@@ -802,7 +804,8 @@ enum ib_wc_status {
 	IB_WC_INV_EEC_STATE_ERR,
 	IB_WC_FATAL_ERR,
 	IB_WC_RESP_TIMEOUT_ERR,
-	IB_WC_GENERAL_ERR
+	IB_WC_GENERAL_ERR,
+	IB_WC_SIG_PIPELINE_CANCELED,
 };
 
 enum ib_wc_opcode {
@@ -959,6 +962,7 @@ enum ib_qp_create_flags {
 	IB_QP_CREATE_SIGNATURE_EN		= 1 << 6,
 	IB_QP_CREATE_USE_GFP_NOIO		= 1 << 7,
 	IB_QP_CREATE_ATOMIC_BE_REPLY	= 1 << 8,
+	IB_QP_CREATE_SIGNATURE_PIPELINE		= 1 << 9,
 	/* reserve bits 26-31 for low level drivers' internal use */
 	IB_QP_CREATE_RESERVED_START		= 1 << 26,
 	IB_QP_CREATE_RESERVED_END		= 1 << 31,
@@ -1198,6 +1202,7 @@ enum ib_send_flags {
 	IB_SEND_SOLICITED	= (1<<2),
 	IB_SEND_INLINE		= (1<<3),
 	IB_SEND_IP_CSUM		= (1<<4),
+	IB_SEND_SIG_PIPELINED	= (1<<5),
 
 	/* reserve bits 26-31 for low level drivers' internal use */
 	IB_SEND_RESERVED_START	= (1 << 26),
@@ -1392,6 +1397,8 @@ struct ib_ucontext {
 	struct list_head	xrcd_list;
 	struct list_head	rule_list;
 	struct list_head	dct_list;
+	struct list_head        wq_list;
+	struct list_head	rwq_ind_tbl_list;
 	int			closing;
 	void		 *peer_mem_private_data;
 	char		 *peer_mem_name;
@@ -1525,6 +1532,69 @@ struct ib_qpg_attr {
 };
 
 
+enum ib_wq_type {
+	IB_WQT_RQ,
+	IB_WQT_SRQ
+};
+
+enum ib_wq_state {
+	IB_WQS_RESET,
+	IB_WQS_RDY,
+	IB_WQS_ERR,
+	IB_WQS_UNKNOWN
+};
+
+struct ib_wq {
+	struct ib_device       *device;
+	struct ib_uobject      *uobject;
+	void		    *wq_context;
+	void		    (*event_handler)(struct ib_event *, void *);
+	struct ib_pd	       *pd;
+	struct ib_cq	       *cq;
+	struct ib_srq	       *srq; /* IB_WQT_SRQ only */
+	u32		wq_num;
+	enum ib_wq_state       state;
+	enum ib_wq_type	wq_type;
+	atomic_t		usecnt;
+};
+
+struct ib_wq_init_attr {
+	void		       *wq_context;
+	enum ib_wq_type	wq_type;
+	u32		max_recv_wr; /* IB_WQT_RQ only */
+	u32		max_recv_sge; /* IB_WQT_RQ only */
+	struct	ib_cq	       *cq;
+	struct	ib_srq	       *srq; /* IB_WQT_SRQ only */
+	void		(*event_handler)(struct ib_event *, void *);
+};
+
+enum ib_wq_attr_mask {
+	IB_WQ_STATE	= 1 << 0,
+	IB_WQ_CUR_STATE	= 1 << 1,
+};
+
+struct ib_wq_attr {
+	enum	ib_wq_state	wq_state;
+	enum	ib_wq_state	curr_wq_state;
+};
+
+struct ib_rwq_ind_table {
+	struct ib_device	*device;
+	struct ib_pd	*pd;
+	struct ib_uobject      *uobject;
+	atomic_t		usecnt;
+	u32		ind_tbl_num;
+	u32		log_ind_tbl_size;
+	struct ib_wq	**ind_tbl;
+};
+
+struct ib_rwq_ind_table_init_attr {
+	struct ib_pd	*pd;
+	u32		log_ind_tbl_size;
+	/* Each entry is a pointer to Receive Work Queue */
+	struct ib_wq	**ind_tbl;
+};
+
 struct ib_qp {
 	struct ib_device       *device;
 	struct ib_pd	       *pd;
@@ -1548,6 +1618,7 @@ struct ib_qp {
 		struct ib_qpg_attr parent_attr;
 	} qpg_attr;
 	u8			port_num;
+	struct ib_rwq_ind_table *rwq_ind_tbl;
 };
 
 struct ib_dct {
@@ -1559,6 +1630,41 @@ struct ib_dct {
 	void		      (*event_handler)(struct ib_event *, void *);
 	void		       *dct_context;
 	u32			dct_num;
+};
+
+/*
+ * RX Hash Function flags.
+*/
+enum ib_rx_hash_function_flags {
+	IB_EX_RX_HASH_FUNC_TOEPLITZ	= 1 << 0,
+	IB_EX_RX_HASH_FUNC_XOR		= 1 << 1
+};
+
+/*
+ * RX Hash flags, these flags allows to set which incoming packet field should
+ * participates in RX Hash. Each flag represent certain packet's field,
+ * when the flag is set the field that is represented by the flag will
+ * participate in RX Hash calculation.
+ * Notice: *IPV4 and *IPV6 flags can't be enabled together on the same QP
+ * and *TCP and *UDP flags can't be enabled together on the same QP.
+*/
+enum ib_rx_hash_fields {
+	IB_RX_HASH_SRC_IPV4		= 1 << 0,
+	IB_RX_HASH_DST_IPV4		= 1 << 1,
+	IB_RX_HASH_SRC_IPV6		= 1 << 2,
+	IB_RX_HASH_DST_IPV6		= 1 << 3,
+	IB_RX_HASH_SRC_PORT_TCP	= 1 << 4,
+	IB_RX_HASH_DST_PORT_TCP	= 1 << 5,
+	IB_RX_HASH_SRC_PORT_UDP	= 1 << 6,
+	IB_RX_HASH_DST_PORT_UDP	= 1 << 7
+};
+
+struct ib_rx_hash_conf {
+	enum ib_rx_hash_function_flags rx_hash_function;
+	u8 rx_key_len; /* valid only for Toeplitz */
+	u8 *rx_hash_key;
+	uint64_t rx_hash_fields_mask; /* enum ib_rx_hash_fields */
+	struct ib_rwq_ind_table *rwq_ind_tbl;
 };
 
 struct ib_mr {
@@ -2081,6 +2187,18 @@ struct ib_device {
 	/*
 	 * Experimental data and functions
 	 */
+	struct ib_wq *		(*create_wq)(struct ib_pd *pd,
+					     struct ib_wq_init_attr *init_attr,
+					     struct ib_udata *udata);
+	int			(*destroy_wq)(struct ib_wq *wq);
+	int			(*modify_wq)(struct ib_wq *wq,
+					     struct ib_wq_attr *attr,
+					     enum ib_wq_attr_mask attr_mask,
+					     struct ib_udata *udata);
+	struct ib_rwq_ind_table *(*create_rwq_ind_table)(struct ib_device *device,
+							 struct ib_rwq_ind_table_init_attr *init_attr,
+							 struct ib_udata *udata);
+	int                     (*destroy_rwq_ind_table)(struct ib_rwq_ind_table *wq_ind_table);
 	int			(*exp_query_device)(struct ib_device *device,
 						    struct ib_exp_device_attr *device_attr);
 	struct ib_qp *		(*exp_create_qp)(struct ib_pd *pd,
@@ -3151,6 +3269,68 @@ struct ib_dct *ib_create_dct(struct ib_pd *pd, struct ib_dct_init_attr *attr,
 int ib_destroy_dct(struct ib_dct *dct);
 int ib_query_dct(struct ib_dct *dct, struct ib_dct_attr *attr);
 
+/**
+ * ib_create_wq - Creates a WQ associated with the specified protection
+ * domain.
+ * @pd: The protection domain associated with the WQ.
+ * @wq_init_attr: A list of initial attributes required to create the
+ * WQ. If WQ creation succeeds, then the attributes are updated to
+ * the actual capabilities of the created WQ.
+ *
+ * wq_init_attr->max_recv_wr and wq_init_attr->max_recv_sge determine
+ * the requested size of the RQ's WQ, and set to the actual values allocated
+ * on return.
+ * If ib_create_wq() succeeds, then max_recv_wr and max_recv_sge will always be
+ * at least as large as the requested values.
+ *
+ * Return Value
+ * ib_create_wq() returns a pointer to the created WQ, or NULL if the request
+ * fails.
+ */
+struct ib_wq *ib_create_wq(struct ib_pd *pd,
+			   struct ib_wq_init_attr *init_attr);
+
+/**
+ * ib_destroy_wq - Destroys the specified WQ.
+ * @wq: The WQ to destroy.
+ */
+int ib_destroy_wq(struct ib_wq *wq);
+
+/**
+ * ib_modify_wq - Modifies the specified WQ.
+ * @wq: The WQ to modify.
+ * @wq_attr: On input, specifies the WQ attributes to modify.
+ * @attr_mask: A bit-mask used to specify which attributes of the WQ
+ *   are being modified.
+ * On output, the current values of selected WQ attributes are returned.
+ */
+int ib_modify_wq(struct ib_wq *wq, struct ib_wq_attr *attr,
+		 enum ib_wq_attr_mask attr_mask);
+
+/*
+ * ib_create_rwq_ind_table - Creates a RQ Indirection Table associated
+ * with the specified protection domain.
+ * @device: The device on which to create the rwq indirection table.
+ * @ib_rwq_ind_table_init_attr: A list of initial attributes required to
+ * create the Indirection Table.
+ *
+ * Note: The life time of ib_rwq_ind_table_init_attr->ind_tbl is not less
+ *	than the created ib_rwq_ind_table object and the caller is responsible
+ *	for its memory allocation/free.
+ *
+ * Return Value:
+ * ib_create_rwq_ind_table returns a pointer to the created
+ * Indirection Table, or NULL if the request fails.
+ */
+struct ib_rwq_ind_table *ib_create_rwq_ind_table(struct ib_device *device,
+						 struct ib_rwq_ind_table_init_attr*
+						 wq_ind_table_init_attr);
+/*
+ * ib_destroy_rwq_ind_table - Destroys the specified Indirection Table.
+ * @wq_ind_table: The Indirection Table to destroy.
+*/
+int ib_destroy_rwq_ind_table(struct ib_rwq_ind_table *wq_ind_table);
+
 /*
  * ib_arm_dct - Arm a DCT to generate DC key violations
  * @dct: pointer to the DCT object
@@ -3181,6 +3361,10 @@ static inline void ib_active_speed_enum_to_rate(u8 active_speed,
 	case IB_SPEED_EDR:
 		*speed = " EDR";
 		*rate = 250;
+		break;
+	case IB_SPEED_HDR:
+		*speed = " HDR";
+		*rate = 500;
 		break;
 	case IB_SPEED_SDR:
 	default:		/* default to SDR for invalid rates */

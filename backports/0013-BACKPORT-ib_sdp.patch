@@ -4,15 +4,13 @@ Subject: [PATCH] BACKPORT: ib_sdp
 Change-Id: I25082aa2e036cc7b4dd32363f0c071a3d6fda54d
 Signed-off-by: Vladimir Sokolovsky <vlad@mellanox.com>
 ---
- drivers/infiniband/ulp/sdp/sdp.h      |   20 ++++-
- drivers/infiniband/ulp/sdp/sdp_cma.c  |   31 ++++++++
- drivers/infiniband/ulp/sdp/sdp_main.c |  131 +++++++++++++++++++++++++++++++-
- drivers/infiniband/ulp/sdp/sdp_proc.c |   32 ++++++++
- drivers/infiniband/ulp/sdp/sdp_rx.c   |   10 ++-
- 5 files changed, 212 insertions(+), 12 deletions(-)
+ drivers/infiniband/ulp/sdp/sdp.h      |  20 ++++-
+ drivers/infiniband/ulp/sdp/sdp_cma.c  |  31 +++++++
+ drivers/infiniband/ulp/sdp/sdp_main.c | 149 ++++++++++++++++++++++++++++++++--
+ drivers/infiniband/ulp/sdp/sdp_proc.c |  32 ++++++++
+ drivers/infiniband/ulp/sdp/sdp_rx.c   |  10 ++-
+ 5 files changed, 230 insertions(+), 12 deletions(-)
 
-diff --git a/drivers/infiniband/ulp/sdp/sdp.h b/drivers/infiniband/ulp/sdp/sdp.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/sdp/sdp.h
 +++ b/drivers/infiniband/ulp/sdp/sdp.h
 @@ -50,7 +50,7 @@
@@ -24,7 +22,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define sdp_inet_num(sk)	(inet_sk(sk)->inet_num)
  #define sdp_inet_sport(sk)	(inet_sk(sk)->inet_sport)
  #define sdp_inet_dport(sk)	(inet_sk(sk)->inet_dport)
-@@ -658,11 +658,11 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
+@@ -658,11 +658,11 @@ static inline struct sk_buff *sdp_stream
  	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
  	if (skb) {
  
@@ -39,7 +37,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			skb->truesize)) ||
  #endif
  			(kind == SK_MEM_SEND && sk_wmem_schedule(sk,
-@@ -867,6 +867,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
+@@ -867,6 +867,7 @@ static inline void sdpstats_hist(u32 *h,
  	h[idx]++;
  }
  
@@ -47,7 +45,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define SDPSTATS_COUNTER_INC(stat) do { this_cpu_ptr(&sdpstats)->stat++; } while (0)
  #define SDPSTATS_COUNTER_ADD(stat, val) do { this_cpu_ptr(&sdpstats)->stat += val; } while (0)
  #define SDPSTATS_COUNTER_MID_INC(stat, mid) do { this_cpu_ptr(&sdpstats)->stat[mid]++; } \
-@@ -876,6 +877,17 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
+@@ -876,6 +877,17 @@ static inline void sdpstats_hist(u32 *h,
  
  #define SDPSTATS_HIST_LINEAR(stat, size) \
  	sdpstats_hist(this_cpu_ptr(&sdpstats)->stat, size, ARRAY_SIZE(this_cpu_ptr(&sdpstats)->stat) - 1, 0)
@@ -65,11 +63,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #else
  #define SDPSTATS_COUNTER_INC(stat)
-diff --git a/drivers/infiniband/ulp/sdp/sdp_cma.c b/drivers/infiniband/ulp/sdp/sdp_cma.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/sdp/sdp_cma.c
 +++ b/drivers/infiniband/ulp/sdp/sdp_cma.c
-@@ -211,6 +211,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
+@@ -211,6 +211,7 @@ static int sdp_connect_handler(struct so
  		memcpy(newnp, inet6_sk(sk), sizeof(struct ipv6_pinfo));
  		if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV4) {
  			/* V6 mapped */
@@ -77,7 +73,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			sdp_inet_daddr(child) = dst_addr->sin_addr.s_addr;
  			ipv6_addr_set(&child->sk_v6_daddr, 0, 0, htonl(0x0000FFFF),
  					h->src_addr.ip4.addr);
-@@ -227,6 +228,23 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
+@@ -227,6 +228,23 @@ static int sdp_connect_handler(struct so
  			ipv6_addr_copy(&child->sk_v6_daddr, &dst_addr6->sin6_addr);
  			ipv6_addr_copy(&child->sk_v6_rcv_saddr, &src_addr6->sin6_addr);
  			ipv6_addr_copy(&newnp->saddr, &src_addr6->sin6_addr);
@@ -101,7 +97,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		} else {
  			sdp_warn(child, "Bad IPV field: 0x%x\n", h->ipv_cap & HH_IPV_MASK);
  		}
-@@ -283,7 +301,11 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
+@@ -283,7 +301,11 @@ static int sdp_connect_handler(struct so
  
  	/* child->sk_write_space(child); */
  	/* child->sk_data_ready(child, 0); */
@@ -113,7 +109,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return 0;
  }
-@@ -466,12 +488,21 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
+@@ -466,12 +488,21 @@ int sdp_cma_handler(struct rdma_cm_id *i
  
  			if (src_addr->sa_family == AF_INET) {
  				/* IPv4 over IPv6 */
@@ -135,11 +131,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  		}
  			else
  #endif
-diff --git a/drivers/infiniband/ulp/sdp/sdp_main.c b/drivers/infiniband/ulp/sdp/sdp_main.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/sdp/sdp_main.c
 +++ b/drivers/infiniband/ulp/sdp/sdp_main.c
-@@ -172,6 +172,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
+@@ -172,6 +172,7 @@ static int sdp_get_port(struct sock *sk,
  
  #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
  	if (inet6_sk(sk)) {
@@ -147,7 +141,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		int addr_type = ipv6_addr_type(&sk->sk_v6_rcv_saddr);
  		if (addr_type == IPV6_ADDR_MAPPED) {
  			addr4->sin_family = AF_INET;
-@@ -185,6 +186,21 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
+@@ -185,6 +186,21 @@ static int sdp_get_port(struct sock *sk,
  			ipv6_addr_copy(&addr6->sin6_addr, &sk->sk_v6_rcv_saddr);
  			addr_len = sizeof(*addr6);
  		}
@@ -169,7 +163,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	}
  		else
  #endif
-@@ -605,10 +621,17 @@ static void sdp_destruct(struct sock *sk)
+@@ -605,10 +621,17 @@ static void sdp_destruct(struct sock *sk
  
  	if (sk->sk_wmem_queued || atomic_read(&sk->sk_rmem_alloc) || sk->sk_forward_alloc) {
  		sdp_dbg(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x "
@@ -187,7 +181,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	}
  
  	if (ssk->parent)
-@@ -847,13 +870,18 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
+@@ -847,13 +870,18 @@ static int sdp_ipv6_connect(struct sock
  	src_addr->sin6_port = htons(sdp_inet_sport(sk));
  	src_addr->sin6_addr = inet6_sk(sk)->saddr;
  
@@ -206,7 +200,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (!ssk->id) {
  		/* If IPv4 over IPv6, make sure rdma_bind will expect ipv4 address */
  		if (addr_type == IPV6_ADDR_MAPPED)
-@@ -866,6 +894,20 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
+@@ -866,6 +894,20 @@ static int sdp_ipv6_connect(struct sock
  	}
  
  	ipv6_addr_copy(&sk->sk_v6_daddr, &usin->sin6_addr);
@@ -240,7 +234,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #endif
  
  	skb_queue_head_init(&ssk->rx_ctl_q);
-@@ -1623,7 +1665,11 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
+@@ -1623,7 +1665,11 @@ static int sdp_recv_urg(struct sock *sk,
  
  		if (len > 0) {
  			if (!(flags & MSG_TRUNC))
@@ -252,7 +246,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			len = 1;
  		} else
  			msg->msg_flags |= MSG_TRUNC;
-@@ -1670,7 +1716,11 @@ void sdp_skb_entail(struct sock *sk, struct sk_buff *skb)
+@@ -1670,7 +1716,11 @@ void sdp_skb_entail(struct sock *sk, str
  }
  
  static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
@@ -264,7 +258,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	int err;
  	struct sdp_sock *ssk = sdp_sk(sk);
-@@ -1737,7 +1787,11 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
+@@ -1737,7 +1787,11 @@ static inline int sdp_bcopy_get(struct s
  		/* Time to copy data. We are close to
  		 * the end! */
  		SDPSTATS_COUNTER_ADD(memcpy_count, copy);
@@ -276,7 +270,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				       off, copy);
  		if (err) {
  #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 7, 0))
-@@ -1883,7 +1937,11 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+@@ -1883,7 +1937,11 @@ static int sdp_sendmsg(struct kiocb *ioc
  	int i;
  	struct sdp_sock *ssk = sdp_sk(sk);
  	struct sk_buff *skb;
@@ -288,7 +282,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	const int size_goal = MIN(ssk->xmit_size_goal, SDP_MAX_PAYLOAD);
  	long timeo;
  	int zcopy_thresh =
-@@ -1902,8 +1960,12 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+@@ -1902,8 +1960,12 @@ static int sdp_sendmsg(struct kiocb *ioc
  	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
  
  	/* Wait for a connection to finish. */
@@ -301,7 +295,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if ((err = sk_stream_wait_connect(sk, &timeo)) != 0)
  			goto out_err;
  	}
-@@ -1912,18 +1974,29 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+@@ -1912,18 +1974,29 @@ static int sdp_sendmsg(struct kiocb *ioc
  	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
  
  	/* Ok commence sending. */
@@ -331,7 +325,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		SDPSTATS_HIST(sendmsg_seglen, seglen);
  
-@@ -1943,6 +2016,9 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+@@ -1943,6 +2016,9 @@ static int sdp_sendmsg(struct kiocb *ioc
  
  			copied += zcopied;
  			seglen = iov->iov_len;
@@ -376,7 +370,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			copied += copy;
  			seglen -= copy;
  			continue;
-@@ -2152,7 +2235,11 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+@@ -2153,7 +2236,11 @@ static int sdp_recvmsg(struct kiocb *ioc
  	lock_sock(sk);
  	ssk->cpu = smp_processor_id();
  	sdp_dbg_data(sk, "iovlen: %zd iov_len: 0x%zx flags: 0x%x peek: 0x%x\n",
@@ -388,7 +382,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			MSG_PEEK);
  
  	posts_handler_get(ssk);
-@@ -2383,7 +2470,11 @@ sdp_mid_data:
+@@ -2386,7 +2473,11 @@ sdp_mid_data:
  			if (rx_sa && offset >= skb->len) {
  				/* No more payload - start rdma copy */
  				sdp_dbg_data(sk, "RDMA copy of 0x%lx bytes\n", used);
@@ -400,7 +394,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  						&used, offset);
  				if (unlikely(err)) {
  					/* ssk->rx_sa might had been freed when
-@@ -2399,9 +2490,16 @@ sdp_mid_data:
+@@ -2402,9 +2493,16 @@ sdp_mid_data:
  				}
  			} else {
  				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
@@ -417,7 +411,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				if (rx_sa && !(flags & MSG_PEEK)) {
  					rx_sa->copied += used;
  					rx_sa->reported += used;
-@@ -2630,11 +2728,19 @@ void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
+@@ -2633,11 +2731,19 @@ void sdp_urg(struct sdp_sock *ssk, struc
  		BUG();
  	ssk->urg_data = TCP_URG_VALID | tmp;
  	if (!sock_flag(sk, SOCK_DEAD))
@@ -437,7 +431,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static struct percpu_counter *orphan_count;
  static int memory_pressure;
  struct proto sdp_proto = {
-@@ -2655,7 +2761,11 @@ struct proto sdp_proto = {
+@@ -2658,7 +2764,11 @@ struct proto sdp_proto = {
  	.enter_memory_pressure = sdp_enter_memory_pressure,
  	.memory_allocated = &memory_allocated,
  	.memory_pressure = &memory_pressure,
@@ -449,7 +443,56 @@ index xxxxxxx..xxxxxxx xxxxxx
          .sysctl_wmem            = sysctl_tcp_wmem,
          .sysctl_rmem            = sysctl_tcp_rmem,
  	.max_header  = sizeof(struct sdp_bsdh),
-@@ -2947,8 +3057,13 @@ static int __init sdp_init(void)
+@@ -2716,7 +2826,11 @@ static struct proto_ops sdp_ipv6_proto_o
+ #endif
+ 
+ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int protocol,
++#ifndef HAVE_SK_ALLOC_5_PARAMS
+ 	       	struct proto_ops *proto_ops)
++#else
++	       	struct proto_ops *proto_ops, int kern)
++#endif
+ {
+ 	struct sock *sk;
+ 	int rc;
+@@ -2737,7 +2851,11 @@ static int sdp_create_ipvx_socket(struct
+ 		return -EPROTONOSUPPORT;
+ 	}
+ 
++#ifndef HAVE_SK_ALLOC_5_PARAMS
+ 	sk = sk_alloc(net, PF_INET_SDP, GFP_KERNEL, &sdp_proto);
++#else
++	sk = sk_alloc(net, PF_INET_SDP, GFP_KERNEL, &sdp_proto, kern);
++#endif
+ 	if (!sk) {
+ 		sdp_warn(NULL, "SDP: failed to allocate socket.\n");
+ 		return -ENOMEM;
+@@ -2775,14 +2893,24 @@ static int sdp_create_ipvx_socket(struct
+ static int sdp_create_v6_socket(struct net *net, struct socket *sock, int protocol,
+ 				int kern)
+ {
++#ifndef HAVE_SK_ALLOC_5_PARAMS
+ 	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops);
++#else
++	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops,
++				      kern);
++#endif
+ }
+ #endif
+ 
+ static int sdp_create_v4_socket(struct net *net, struct socket *sock, int protocol,
+ 				int kern)
+ {
++#ifndef HAVE_SK_ALLOC_5_PARAMS
+ 	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops);
++#else
++	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops,
++				      kern);
++#endif
+ }
+ 
+ static void sdp_add_device(struct ib_device *device)
+@@ -2950,8 +3078,13 @@ static int __init sdp_init(void)
  	if (!orphan_count)
  		goto no_mem_orphan_count;
  
@@ -463,7 +506,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	sdp_proto.sockets_allocated = sockets_allocated;
  	sdp_proto.orphan_count = orphan_count;
-@@ -3027,9 +3142,15 @@ static void __exit sdp_exit(void)
+@@ -3030,9 +3163,15 @@ static void __exit sdp_exit(void)
  
  	BUG_ON(!list_empty(&sock_list));
  
@@ -480,8 +523,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	if (percpu_counter_sum(sockets_allocated))
  		printk(KERN_WARNING "%s: sockets_allocated %lld\n", __func__,
-diff --git a/drivers/infiniband/ulp/sdp/sdp_proc.c b/drivers/infiniband/ulp/sdp/sdp_proc.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/sdp/sdp_proc.c
 +++ b/drivers/infiniband/ulp/sdp/sdp_proc.c
 @@ -30,6 +30,7 @@
@@ -492,7 +533,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #include <linux/proc_fs.h>
  #include <linux/debugfs.h>
  #include <rdma/sdp_socket.h>
-@@ -179,8 +180,13 @@ static int sdp_v6_seq_show(struct seq_file *seq, int num, struct sock *sk)
+@@ -179,8 +180,13 @@ static int sdp_v6_seq_show(struct seq_fi
  	__u16 srcp;
  	__u32 rx_queue, tx_queue;
  
@@ -518,7 +559,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct seq_file *seq;
  	struct sdp_iter_state *s;
  	int rc;
-@@ -333,12 +343,21 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
+@@ -333,12 +343,21 @@ static void sdpstats_seq_hist(struct seq
  	} 							\
  })
  
@@ -540,7 +581,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #define __sdpstats_seq_hist_pcpu(seq, msg, hist) ({		\
  	unsigned int __i;                                       \
-@@ -385,7 +404,11 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
+@@ -385,7 +404,11 @@ static int sdpstats_seq_show(struct seq_
  	seq_printf(seq, "memcpy_count       \t\t: %u\n",
  		SDPSTATS_COUNTER_GET(memcpy_count));
  
@@ -552,7 +593,7 @@ index xxxxxxx..xxxxxxx xxxxxx
                  if (mid2str(i)) {
                          seq_printf(seq, "post_send %-20s\t: %u\n",
                                          mid2str(i),
-@@ -714,12 +737,21 @@ static int sdp_ssk_hist_seq_show(struct seq_file *seq, void *v)
+@@ -714,12 +737,21 @@ static int sdp_ssk_hist_seq_show(struct
  			ssk->hst_idx, ARRAY_SIZE(ssk->hst));
  
  	seq_printf(seq, "rmem: %d wmem: %d wqueue: %d "
@@ -574,11 +615,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	for (i = 0; i < min(ssk->hst_idx, ARRAY_SIZE(ssk->hst)); ++i) {
  		struct sdp_sock_hist *hst = &ssk->hst[i];
-diff --git a/drivers/infiniband/ulp/sdp/sdp_rx.c b/drivers/infiniband/ulp/sdp/sdp_rx.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/sdp/sdp_rx.c
 +++ b/drivers/infiniband/ulp/sdp/sdp_rx.c
-@@ -208,11 +208,11 @@ static int sdp_post_recv(struct sdp_sock *ssk)
+@@ -208,11 +208,11 @@ static int sdp_post_recv(struct sdp_sock
  		++skb_shinfo(skb)->nr_frags;
  	}
  	skb->truesize += ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD);

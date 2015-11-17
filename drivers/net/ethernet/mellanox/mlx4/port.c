@@ -1163,25 +1163,24 @@ int mlx4_SET_PORT_general(struct mlx4_dev *dev, u8 port, int mtu,
 	if (dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH) {
 		enum mlx4_set_port_roce_mode set_roce_mode = get_set_port_roce_mode(dev);
 
-		if (set_roce_mode == MLX4_SET_PORT_ROCE_MODE_INVALID)
-			return -EINVAL;
+		if (set_roce_mode != MLX4_SET_PORT_ROCE_MODE_INVALID) {
+			context->roce_mode |= (set_roce_mode & 7) << 4;
+			if (set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_5 ||
+			    set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_5_PLUS_2) {
+				context->flags |= SET_PORT_ROCE_1_5_FLAGS;
+				context->rr_proto = dev->caps.rr_proto;
+			} else if (set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_PLUS_2) {
+				context->flags |= SET_PORT_ROCE_2_FLAGS;
+			}
 
-		context->roce_mode |= (set_roce_mode & 7) << 4;
-		if (set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_5 ||
-		    set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_5_PLUS_2) {
-			context->flags |= SET_PORT_ROCE_1_5_FLAGS;
-			context->rr_proto = dev->caps.rr_proto;
-		} else if (set_roce_mode == MLX4_SET_PORT_ROCE_MODE_1_PLUS_2) {
-			context->flags |= SET_PORT_ROCE_2_FLAGS;
-		}
-
-		if (!mlx4_is_slave(dev) &&
-		    (dev->caps.roce_mode == MLX4_ROCE_MODE_1_5_PLUS_2 ||
-		     dev->caps.roce_mode == MLX4_ROCE_MODE_2 ||
-		     dev->caps.roce_mode == MLX4_ROCE_MODE_1_PLUS_2)) {
-			err = mlx4_config_roce_v2_port(dev, ROCE_V2_UDP_DPORT);
-			if (err)
-				return err;
+			if (!mlx4_is_slave(dev) &&
+			    (dev->caps.roce_mode == MLX4_ROCE_MODE_1_5_PLUS_2 ||
+			     dev->caps.roce_mode == MLX4_ROCE_MODE_2 ||
+			     dev->caps.roce_mode == MLX4_ROCE_MODE_1_PLUS_2)) {
+				err = mlx4_config_roce_v2_port(dev, ROCE_V2_UDP_DPORT);
+				if (err)
+					return err;
+			}
 		}
 	}
 

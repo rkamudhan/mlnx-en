@@ -3,15 +3,13 @@ Subject: [PATCH] BACKPORT: eth_ipoib
 
 Signed-off-by: Alaa Hleihel <alaa@mellanox.com>
 ---
- drivers/net/eipoib/eth_ipoib.h           |   11 +
- drivers/net/eipoib/eth_ipoib_ethtool.c   |    9 +
- drivers/net/eipoib/eth_ipoib_main.c      |  384 ++++++++++++++++++++++++++++--
- drivers/net/eipoib/eth_ipoib_multicast.c |    4 +
- drivers/net/eipoib/eth_ipoib_sysfs.c     |   47 ++++
- 5 files changed, 439 insertions(+), 16 deletions(-)
+ drivers/net/eipoib/eth_ipoib.h           |  11 +
+ drivers/net/eipoib/eth_ipoib_ethtool.c   |   9 +
+ drivers/net/eipoib/eth_ipoib_main.c      | 377 +++++++++++++++++++++++++++++--
+ drivers/net/eipoib/eth_ipoib_multicast.c |   4 +
+ drivers/net/eipoib/eth_ipoib_sysfs.c     |  48 +++-
+ 5 files changed, 430 insertions(+), 19 deletions(-)
 
-diff --git a/drivers/net/eipoib/eth_ipoib.h b/drivers/net/eipoib/eth_ipoib.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/eipoib/eth_ipoib.h
 +++ b/drivers/net/eipoib/eth_ipoib.h
 @@ -216,7 +216,13 @@ struct parent {
@@ -42,11 +40,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  void parent_destroy_sysfs_entry(struct parent *parent);
  int parent_create_sysfs_entry(struct parent *parent);
  int create_slave_symlinks(struct net_device *master,
-diff --git a/drivers/net/eipoib/eth_ipoib_ethtool.c b/drivers/net/eipoib/eth_ipoib_ethtool.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/eipoib/eth_ipoib_ethtool.c
 +++ b/drivers/net/eipoib/eth_ipoib_ethtool.c
-@@ -123,6 +123,12 @@ static int parent_get_sset_count(struct net_device *parent_dev, int sset)
+@@ -123,6 +123,12 @@ static int parent_get_sset_count(struct
  		return -EOPNOTSUPP;
  	}
  }
@@ -59,7 +55,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static const struct ethtool_ops parent_ethtool_ops = {
  	.get_drvinfo		= parent_ethtool_get_drvinfo,
-@@ -131,6 +137,9 @@ static const struct ethtool_ops parent_ethtool_ops = {
+@@ -131,6 +137,9 @@ static const struct ethtool_ops parent_e
  	.get_ethtool_stats	= parent_get_ethtool_stats,
  	.get_sset_count		= parent_get_sset_count,
  	.get_link		= ethtool_op_get_link,
@@ -69,11 +65,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  };
  
  void parent_set_ethtool_ops(struct net_device *dev)
-diff --git a/drivers/net/eipoib/eth_ipoib_main.c b/drivers/net/eipoib/eth_ipoib_main.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/eipoib/eth_ipoib_main.c
 +++ b/drivers/net/eipoib/eth_ipoib_main.c
-@@ -59,6 +59,14 @@ const char eth_ipoib_driver_version[] = DRV_VERSION" ("DRV_RELDATE")";
+@@ -59,6 +59,14 @@ const char eth_ipoib_driver_version[] =
  #define PARENT_MAC_MASK 0xe7
  
  /* forward declaration */
@@ -135,7 +129,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  /* name space sys/fs functions */
  int eipoib_net_id __read_mostly;
  
-@@ -100,6 +148,7 @@ static struct pernet_operations eipoib_net_ops = {
+@@ -100,6 +148,7 @@ static struct pernet_operations eipoib_n
  	.id   = &eipoib_net_id,
  	.size = sizeof(struct eipoib_net),
  };
@@ -143,7 +137,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  /* set mac fields emac=<qpn><lid> */
  static inline
-@@ -204,11 +253,19 @@ static inline int netdev_unset_parent_master(struct net_device *slave,
+@@ -204,11 +253,19 @@ static inline int netdev_unset_parent_ma
  
  	ASSERT_RTNL();
  
@@ -163,7 +157,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	slave->flags &= ~(IFF_SLAVE);
  	return 0;
  }
-@@ -221,11 +278,18 @@ static inline int netdev_set_parent_master(struct net_device *slave,
+@@ -221,11 +278,18 @@ static inline int netdev_set_parent_mast
  
  	ASSERT_RTNL();
  
@@ -183,7 +177,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* deny bonding from enslaving it. */;
  	slave->flags |= IFF_SLAVE;
  	return 0;
-@@ -258,12 +322,20 @@ static inline int is_parent_mac(struct net_device *dev, u8 *mac)
+@@ -258,12 +322,20 @@ static inline int is_parent_mac(struct n
  
  static inline int __is_slave(struct net_device *dev)
  {
@@ -204,7 +198,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		is_driver_owner(dev, SDRV_NAME) && __is_slave(dev);
  }
  
-@@ -379,6 +451,7 @@ static void parent_detach_slave(struct parent *parent, struct slave *slave)
+@@ -379,6 +451,7 @@ static void parent_detach_slave(struct p
  	slave_put(slave, parent);
  }
  
@@ -212,7 +206,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static netdev_features_t parent_fix_features(struct net_device *dev,
  					     netdev_features_t features)
  {
-@@ -393,8 +466,9 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
+@@ -393,8 +466,9 @@ static netdev_features_t parent_fix_feat
  
  	mask = features;
  	features &= ~NETIF_F_ONE_FOR_ALL;
@@ -223,7 +217,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	parent_for_each_slave_rcu(parent, slave)
  		features = netdev_increment_features(features,
  						     slave->dev->features,
-@@ -408,6 +482,7 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
+@@ -408,6 +482,7 @@ static netdev_features_t parent_fix_feat
  	rcu_read_unlock_bh();
  	return features;
  }
@@ -231,7 +225,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static int parent_compute_features(struct parent *parent)
  {
-@@ -428,7 +503,9 @@ static int parent_compute_features(struct parent *parent)
+@@ -428,7 +503,9 @@ static int parent_compute_features(struc
  	/* gets the common features from all slaves */
  	parent_for_each_slave_rcu(parent, slave) {
  		features &= slave->dev->features;
@@ -241,7 +235,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	}
  
  	features = features | PARENT_VLAN_FEATURES;
-@@ -438,12 +515,19 @@ static int parent_compute_features(struct parent *parent)
+@@ -438,12 +515,19 @@ static int parent_compute_features(struc
  
  	features &= hw_features;
  	features |= take;
@@ -262,7 +256,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		__func__, parent_dev->name, parent_dev->features);
  
  	rcu_read_unlock_bh();
-@@ -544,13 +628,21 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
+@@ -544,13 +628,21 @@ int parent_enslave(struct net_device *pa
  
  	/* already enslaved */
  	if ((slave_dev->flags & IFF_SLAVE) ||
@@ -284,7 +278,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	/* set parent netdev attributes */
  	if (parent->slave_cnt == 0)
-@@ -629,6 +721,7 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
+@@ -629,6 +721,7 @@ int parent_enslave(struct net_device *pa
  	if (res)
  		goto err_close;
  
@@ -292,7 +286,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* register handler */
  	res = netdev_rx_handler_register(slave_dev, eipoib_handle_frame,
  					 new_slave);
-@@ -637,6 +730,9 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
+@@ -637,6 +730,9 @@ int parent_enslave(struct net_device *pa
  			parent_dev->name, res);
  		goto err_close;
  	}
@@ -302,7 +296,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	pr_info("%s: enslaving %s\n", parent_dev->name, slave_dev->name);
  
-@@ -677,7 +773,11 @@ int parent_release_slave(struct net_device *parent_dev,
+@@ -677,7 +773,11 @@ int parent_release_slave(struct net_devi
  
  	/* slave is not a slave or master is not master of this slave */
  	if (!(slave_dev->flags & IFF_SLAVE) ||
@@ -314,7 +308,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		pr_err("%s cannot release %s.\n",
  		       parent_dev->name, slave_dev->name);
  		return -EINVAL;
-@@ -729,10 +829,16 @@ int parent_release_slave(struct net_device *parent_dev,
+@@ -729,10 +829,16 @@ int parent_release_slave(struct net_devi
  	write_unlock_bh(&parent->lock);
  
  	/* must do this from outside any spinlocks */
@@ -362,7 +356,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		const struct rtnl_link_stats64 *sstats =
  			dev_get_stats(slave->dev, &temp);
  
-@@ -808,7 +925,38 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
+@@ -808,7 +925,38 @@ static struct rtnl_link_stats64 *parent_
  		stats->tx_fifo_errors += sstats->tx_fifo_errors;
  		stats->tx_heartbeat_errors += sstats->tx_heartbeat_errors;
  		stats->tx_window_errors += sstats->tx_window_errors;
@@ -402,20 +396,16 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	rcu_read_unlock_bh();
  
-@@ -828,11 +976,21 @@ static inline int eipoib_mac_hash(const unsigned char *mac)
- static struct neigh *neigh_find(struct hlist_head *head,
+@@ -829,9 +977,16 @@ static struct neigh *neigh_find(struct h
  				const u8 *addr)
  {
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 	struct hlist_node *h;
-+#endif
  	struct neigh *neigh;
- 
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 	hlist_for_each_entry(neigh, h, head, hlist) {
-+#else
-+	hlist_for_each_entry(neigh, head, hlist) {
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++	struct hlist_node *hlnode;
 +#endif
+ 
+-	hlist_for_each_entry(neigh, head, hlist) {
++	compat_hlist_for_each_entry(neigh, head, hlist) {
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
  		if (ether_addr_equal(neigh->emac, addr))
 +#else
@@ -424,58 +414,49 @@ index xxxxxxx..xxxxxxx xxxxxx
  			return neigh;
  	}
  	return NULL;
-@@ -841,11 +999,22 @@ static struct neigh *neigh_find(struct hlist_head *head,
- static struct neigh *neigh_find_rcu(struct hlist_head *head,
+@@ -841,9 +996,16 @@ static struct neigh *neigh_find_rcu(stru
  				const u8 *addr)
  {
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 	struct hlist_node *h;
-+#endif
  	struct neigh *neigh;
- 
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 	hlist_for_each_entry_rcu(neigh, h, head, hlist) {
-+#else
-+	hlist_for_each_entry_rcu(neigh, head, hlist) {
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++	struct hlist_node *hlnode;
 +#endif
+ 
+-	hlist_for_each_entry_rcu(neigh, head, hlist) {
++	compat_hlist_for_each_entry_rcu(neigh, head, hlist) {
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
  		if (ether_addr_equal(neigh->emac, addr))
 +#else
 +                if (!memcmp(neigh->emac, addr,ETH_ALEN))
 +#endif
-+
  			return neigh;
  	}
  	return NULL;
-@@ -973,8 +1142,13 @@ static void slave_neigh_flush(struct slave *slave)
- 	spin_lock_bh(&slave->hash_lock);
+@@ -972,7 +1134,10 @@ static void slave_neigh_flush(struct sla
  	for (i = 0; i < NEIGH_HASH_SIZE; i++) {
  		struct neigh *neigh;
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 		struct hlist_node *h, *n;
- 		hlist_for_each_entry_safe(neigh, h, n, &slave->hash[i], hlist) {
-+#else
-+		struct hlist_node *n;
-+		hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
+ 		struct hlist_node *n;
+-		hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++		struct hlist_node *hlnode;
 +#endif
++		compat_hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
  			/* perhasps use neigh_delete instead of eipoib_neigh_put? */
  			eipoib_neigh_put(neigh);
  		}
-@@ -1004,8 +1178,13 @@ static void slave_neigh_reap(struct parent *parent, struct slave *slave)
- 
+@@ -1003,7 +1168,10 @@ static void slave_neigh_reap(struct pare
  	for (i = 0; i < NEIGH_HASH_SIZE; i++) {
  		struct neigh *neigh;
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 		struct hlist_node *h, *n;
- 		hlist_for_each_entry_safe(neigh, h, n, &slave->hash[i], hlist) {
-+#else
-+		struct hlist_node *n;
-+		hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
+ 		struct hlist_node *n;
+-		hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++		struct hlist_node *hlnode;
 +#endif
++		compat_hlist_for_each_entry_safe(neigh, n, &slave->hash[i], hlist) {
  			int is_mc_neigh = 0;
  			/* check if the time is bigger than allowed */
  			/* was the neigh idle for two GC periods */
-@@ -1023,7 +1202,11 @@ static void slave_neigh_reap(struct parent *parent, struct slave *slave)
+@@ -1021,7 +1189,11 @@ static void slave_neigh_reap(struct pare
  
  				/* decrease ref count for kernel mc entry */
  				if (unlikely(is_mc_neigh))
@@ -487,7 +468,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			}
  		}
  	}
-@@ -1058,7 +1241,11 @@ struct neigh *eipoib_neigh_get(struct slave *slave, const u8 *emac)
+@@ -1056,7 +1228,11 @@ struct neigh *eipoib_neigh_get(struct sl
  static int neigh_learn(struct slave *slave, struct sk_buff *skb, u8 *remac)
  {
  	struct net_device *dev = slave->dev;
@@ -499,41 +480,16 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct parent *parent = netdev_priv(parent_dev);
  	int rc;
  	struct learn_neigh_info *learn_neigh;
-@@ -1123,11 +1310,18 @@ static inline int eipoib_slave_hash(const unsigned char *mac, u16 vlan)
- static inline struct slave *slave_find(struct hlist_head *head,
+@@ -1122,9 +1298,16 @@ static inline struct slave *slave_find(s
  				const u8 *addr, u16 vlan)
  {
--	struct hlist_node *h;
  	struct slave *slave;
--
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
-+	struct hlist_node *h;
- 	hlist_for_each_entry(slave, h, head, hlist) {
-+#else
-+		hlist_for_each_entry(slave, head, hlist) {
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++	struct hlist_node *hlnode;
 +#endif
-+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
- 		if (ether_addr_equal(slave->emac, addr) && slave->vlan == vlan)
-+#else
-+		if (!memcmp(slave->emac, addr,ETH_ALEN) && slave->vlan == vlan)
-+#endif
- 			return slave;
- 	}
- 	return NULL;
-@@ -1136,12 +1330,19 @@ static inline struct slave *slave_find(struct hlist_head *head,
- static inline struct slave *slave_find_rcu(struct hlist_head *head,
- 				const u8 *addr, u16 vlan)
- {
--	struct hlist_node *h;
--
- 	struct slave *slave;
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
-+	struct hlist_node *h;
  
- 	hlist_for_each_entry_rcu(slave, h, head, hlist) {
-+#else
-+		hlist_for_each_entry_rcu(slave, head, hlist) {
-+#endif
+-	hlist_for_each_entry(slave, head, hlist) {
++	compat_hlist_for_each_entry(slave, head, hlist) {
 +#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
  		if (ether_addr_equal(slave->emac, addr) && slave->vlan == vlan)
 +#else
@@ -542,7 +498,25 @@ index xxxxxxx..xxxxxxx xxxxxx
  			return slave;
  	}
  	return NULL;
-@@ -1552,6 +1753,9 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
+@@ -1134,9 +1317,16 @@ static inline struct slave *slave_find_r
+ 				const u8 *addr, u16 vlan)
+ {
+ 	struct slave *slave;
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++	struct hlist_node *hlnode;
++#endif
+ 
+-	hlist_for_each_entry_rcu(slave, head, hlist) {
++	compat_hlist_for_each_entry_rcu(slave, head, hlist) {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
+ 		if (ether_addr_equal(slave->emac, addr) && slave->vlan == vlan)
++#else
++		if (!memcmp(slave->emac, addr,ETH_ALEN) && slave->vlan == vlan)
++#endif
+ 			return slave;
+ 	}
+ 	return NULL;
+@@ -1547,6 +1737,9 @@ static struct sk_buff *get_slave_skb_arp
  	struct eth_arp_data *arp_data = (struct eth_arp_data *)
  					(skb->data + sizeof(struct ethhdr) +
  					 sizeof(struct arphdr));
@@ -552,7 +526,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	u8 t_addr[ETH_ALEN] = {0};
  	int err = 0;
  	/* mark regular packet handling */
-@@ -1564,7 +1768,11 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
+@@ -1559,7 +1752,11 @@ static struct sk_buff *get_slave_skb_arp
  	 * arp request for all these IP's.
  	 */
  	if (skb->protocol == htons(ETH_P_ARP))
@@ -564,7 +538,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				       arp_data->arp_sha, slave->vlan, GFP_ATOMIC);
  	if (err && err != -EINVAL)
  		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 err: %d",
-@@ -1578,14 +1786,22 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
+@@ -1573,14 +1770,22 @@ static struct sk_buff *get_slave_skb_arp
  	 */
  	arp_data->arp_dha[0] = arp_data->arp_dha[0] & 0xFD;
  	if (htons(ARPOP_REPLY) == (arphdr->ar_op) &&
@@ -587,7 +561,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/* create gratuitous ARP on behalf of the guest */
  		nskb = arp_create(ARPOP_REQUEST,
  				  be16_to_cpu(skb->protocol),
-@@ -1643,7 +1859,11 @@ static void get_slave_skb_arp_by_ip(struct slave *slave,
+@@ -1638,7 +1843,11 @@ static void get_slave_skb_arp_by_ip(stru
  		       __func__, slave->dev->name);
  
  	/* add new source IP as served via the driver. */
@@ -599,7 +573,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			     slave->vlan, GFP_ATOMIC);
  	if (ret && ret != -EINVAL)
  		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 mac: %pM",
-@@ -1694,7 +1914,11 @@ int add_mc_neigh(struct slave *slave, __be32 ip)
+@@ -1689,7 +1898,11 @@ int add_mc_neigh(struct slave *slave, __
  	}
  
  	/* cause ipoib_set_mcast_list -> ipoib: mcast_restart_task */
@@ -611,7 +585,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (ret)
  		pr_err("%s: Failed to add mc (dev:%s, mc: %pI6). ret:%d\n",
  		       __func__, slave->dev->name, dst_mc_ib_mac_addr + 4, ret);
-@@ -1747,7 +1971,11 @@ out:
+@@ -1742,7 +1955,11 @@ out:
  static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
  {
  	struct net_device *dev = slave->dev;
@@ -623,7 +597,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct parent *parent = netdev_priv(parent_dev);
  	struct sk_buff *nskb = NULL;
  	struct ethhdr *ethh = (struct ethhdr *)(skb->data);
-@@ -1860,7 +2088,11 @@ static struct sk_buff *get_parent_skb_arp(struct slave *slave,
+@@ -1855,7 +2072,11 @@ static struct sk_buff *get_parent_skb_ar
  					  struct sk_buff *skb,
  					  u8 *remac)
  {
@@ -635,7 +609,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct sk_buff *nskb;
  	struct arphdr *arphdr = (struct arphdr *)(skb->data);
  	struct ipoib_arp_data *arp_data = (struct ipoib_arp_data *)
-@@ -1872,10 +2104,17 @@ static struct sk_buff *get_parent_skb_arp(struct slave *slave,
+@@ -1867,10 +2088,17 @@ static struct sk_buff *get_parent_skb_ar
  	/* live migration: gets arp with broadcast src and dst */
  	if (!memcmp(arp_data->arp_sha, slave->dev->broadcast, INFINIBAND_ALEN) &&
  	    !memcmp(arp_data->arp_dha, slave->dev->broadcast, INFINIBAND_ALEN)) {
@@ -653,7 +627,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/*
  		 * set local administrated bit,
  		 * that way the bridge will not throws it
-@@ -1913,7 +2152,11 @@ static struct sk_buff *get_parent_skb_ip(struct slave *slave,
+@@ -1908,7 +2136,11 @@ static struct sk_buff *get_parent_skb_ip
  static struct sk_buff *get_parent_skb(struct slave *slave,
  				      struct sk_buff *skb, u8 *remac)
  {
@@ -665,11 +639,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct sk_buff *nskb = NULL;
  	struct ethhdr *ethh;
  
-@@ -1980,21 +2223,45 @@ int add_vlan_and_send(struct parent *parent, int vlan_tag,
+@@ -1975,21 +2207,45 @@ int add_vlan_and_send(struct parent *par
  	int rc;
  
  	if (vlan_tag) {
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
++#ifndef HAVE_3_PARAMS_FOR_VLAN_HWACCEL_PUT_TAG
  		__vlan_hwaccel_put_tag(skb, vlan_tag);
 +#else
 +		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan_tag);
@@ -711,7 +685,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct parent *parent = netdev_priv(parent_dev);
  	struct eipoib_cb_data *data = IPOIB_HANDLER_CB(skb);
  	struct napi_struct *napi =  data->rx.napi;
-@@ -2053,8 +2320,11 @@ static rx_handler_result_t eipoib_handle_frame(struct sk_buff **pskb)
+@@ -2048,8 +2304,11 @@ static rx_handler_result_t eipoib_handle
  	struct slave *slave;
  	rcu_read_lock_bh();
  
@@ -724,13 +698,13 @@ index xxxxxxx..xxxxxxx xxxxxx
  	parent_rx(skb, slave);
  
  	rcu_read_unlock_bh();
-@@ -2081,7 +2351,13 @@ static void prepare_802_1Q_skb(struct sk_buff *skb)
+@@ -2076,7 +2335,13 @@ static void prepare_802_1Q_skb(struct sk
  	memmove(skb->data + VLAN_HLEN, ethh, ETH_ALEN * 2);
  	skb_pull(skb, VLAN_HLEN);
  	ethh = (struct ethhdr *)skb->data;
 -	__vlan_hwaccel_put_tag(skb, vlan);
 +
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
++#ifndef HAVE_3_PARAMS_FOR_VLAN_HWACCEL_PUT_TAG
 +		__vlan_hwaccel_put_tag(skb, vlan);
 +#else
 +		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan);
@@ -739,7 +713,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	ethh->h_proto = proto;
  	skb->protocol = proto;
  }
-@@ -2295,8 +2571,16 @@ static void parent_set_dev_addr(struct net_device *ibd,
+@@ -2290,8 +2555,16 @@ static void parent_set_dev_addr(struct n
  
  	memcpy(parent->gid.raw, gid.raw, GID_LEN);
  }
@@ -757,7 +731,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	return skb_tx_hash(dev, skb);
  }
-@@ -2373,21 +2657,40 @@ static const struct net_device_ops parent_netdev_ops = {
+@@ -2368,21 +2641,40 @@ static const struct net_device_ops paren
  	.ndo_select_queue	= parent_select_q,
  	/* parnt mtu is min(slaves_mtus) */
  	.ndo_change_mtu		= NULL,
@@ -798,7 +772,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* initialize rwlocks */
  	rwlock_init(&parent->lock);
  	rwlock_init(&parent->emac_info_lock);
-@@ -2405,13 +2708,17 @@ static void parent_setup(struct net_device *parent_dev)
+@@ -2400,13 +2692,17 @@ static void parent_setup(struct net_devi
  
  	/* Initialize the device options */
  	parent_dev->tx_queue_len = 0;
@@ -818,7 +792,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	parent_dev->features |= PARENT_VLAN_FEATURES;
  }
  
-@@ -2462,6 +2769,9 @@ static struct parent *parent_create(struct net_device *ibd)
+@@ -2457,6 +2753,9 @@ static struct parent *parent_create(stru
  	strncpy(parent->ipoib_main_interface, ibd->name, IFNAMSIZ);
  	parent_dev->dev_id = ibd->dev_id;
  
@@ -828,7 +802,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	return parent;
  
  out_unreg:
-@@ -2504,13 +2814,27 @@ static void parent_free_all(void)
+@@ -2499,13 +2798,27 @@ static void parent_free_all(void)
  /* netdev events handlers */
  static inline int is_ipoib_pif_intf(struct net_device *dev)
  {
@@ -856,7 +830,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (child_sd)
  		return 1;
  
-@@ -2548,7 +2872,11 @@ static int parent_master_netdev_event(unsigned long event,
+@@ -2543,7 +2856,11 @@ static int parent_master_netdev_event(un
  static int parent_slave_netdev_event(unsigned long event,
  				     struct net_device *slave_dev)
  {
@@ -868,7 +842,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct parent *parent = netdev_priv(parent_dev);
  
  	if (!parent_dev) {
-@@ -2589,8 +2917,11 @@ static int parent_slave_netdev_event(unsigned long event,
+@@ -2584,8 +2901,11 @@ static int parent_slave_netdev_event(uns
  static int eipoib_netdev_event(struct notifier_block *this,
  			       unsigned long event, void *ptr)
  {
@@ -881,7 +855,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (dev_net(event_dev) != &init_net)
  		return NOTIFY_DONE;
  
-@@ -2653,7 +2984,11 @@ static int __init mod_init(void)
+@@ -2648,7 +2968,11 @@ static int __init mod_init(void)
  
  	pr_info(DRV_NAME": %s", version);
  
@@ -893,7 +867,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (rc)
  		goto out;
  
-@@ -2664,10 +2999,19 @@ static int __init mod_init(void)
+@@ -2659,10 +2983,19 @@ static int __init mod_init(void)
  		goto unreg_subsys;
  	}
  
@@ -913,7 +887,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  out:
  	return rc;
  
-@@ -2677,7 +3021,15 @@ static void __exit mod_exit(void)
+@@ -2672,7 +3005,15 @@ static void __exit mod_exit(void)
  {
  	unregister_netdevice_notifier(&parent_netdev_notifier);
  
@@ -929,11 +903,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	rtnl_lock();
  	parent_free_all();
-diff --git a/drivers/net/eipoib/eth_ipoib_multicast.c b/drivers/net/eipoib/eth_ipoib_multicast.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/eipoib/eth_ipoib_multicast.c
 +++ b/drivers/net/eipoib/eth_ipoib_multicast.c
-@@ -147,7 +147,11 @@ struct sk_buff *gen_igmp_v2_query(struct slave *slave)
+@@ -147,7 +147,11 @@ struct sk_buff *gen_igmp_v2_query(struct
  	struct ethhdr  *ethhdr;
  	struct iphdr   *iph;
  	struct igmphdr *igmph;
@@ -945,8 +917,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	u8 *p_options;
  	int size;
  
-diff --git a/drivers/net/eipoib/eth_ipoib_sysfs.c b/drivers/net/eipoib/eth_ipoib_sysfs.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/eipoib/eth_ipoib_sysfs.c
 +++ b/drivers/net/eipoib/eth_ipoib_sysfs.c
 @@ -74,8 +74,12 @@ static int get_emac(u8 *mac, char *s)
@@ -962,20 +932,19 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	char *p = buf;
  	struct parent *parent;
-@@ -108,8 +112,12 @@ static ssize_t parent_show_neighs(struct device *d,
+@@ -108,7 +112,10 @@ static ssize_t parent_show_neighs(struct
  	parent_for_each_slave_rcu(parent, slave) {
  		for (i = 0; i < NEIGH_HASH_SIZE; i++) {
  			struct neigh *neigh;
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0))
- 			struct hlist_node *n;
- 			hlist_for_each_entry_rcu(neigh, n, &slave->hash[i], hlist)
-+#else
-+			hlist_for_each_entry_rcu(neigh, &slave->hash[i], hlist)
+-			hlist_for_each_entry_rcu(neigh, &slave->hash[i], hlist)
++#ifndef HAVE_HLIST_FOR_EACH_ENTRY_3_PARAMS
++			struct hlist_node *hlnode;
 +#endif
++			compat_hlist_for_each_entry_rcu(neigh, &slave->hash[i], hlist)
  				p += _sprintf(p, buf, "SLAVE=%-10s EMAC=%pM IMAC=%pM:%pM:%pM:%.2x:%.2x\n",
  					      slave->dev->name,
  					      neigh->emac,
-@@ -473,6 +481,7 @@ static struct attribute *per_parent_attrs[] = {
+@@ -472,6 +479,7 @@ static struct attribute *per_parent_attr
  	NULL,
  };
  
@@ -983,7 +952,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  /* name spcase  support */
  static const void *eipoib_namespace(struct class *cls,
  				    const struct class_attribute *attr)
-@@ -482,6 +491,7 @@ static const void *eipoib_namespace(struct class *cls,
+@@ -481,6 +489,7 @@ static const void *eipoib_namespace(stru
  			     struct eipoib_net, class_attr_eipoib_interfaces);
  	return eipoib_n->net;
  }
@@ -991,7 +960,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static struct attribute_group parent_group = {
  	/* per parent sysfs files under: /sys/class/net/<IF>/eth/.. */
-@@ -517,36 +527,73 @@ void destroy_slave_symlinks(struct net_device *master,
+@@ -516,36 +525,73 @@ void destroy_slave_symlinks(struct net_d
  	sysfs_remove_link(&(master->dev.kobj), linkname);
  }
  
@@ -1026,7 +995,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	sysfs_attr_init(&eipoib_n->class_attr_eipoib_interfaces.attr);
  
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0))
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
  	rc = netdev_class_create_file(&eipoib_n->class_attr_eipoib_interfaces);
 +#else
 +	rc = netdev_class_create_file_ns(&eipoib_n->class_attr_eipoib_interfaces, eipoib_n->net);
@@ -1053,7 +1022,7 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  {
 +#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
-+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0))
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
  	netdev_class_remove_file(&eipoib_n->class_attr_eipoib_interfaces);
 +#else
 +	netdev_class_remove_file_ns(&eipoib_n->class_attr_eipoib_interfaces, eipoib_n->net);

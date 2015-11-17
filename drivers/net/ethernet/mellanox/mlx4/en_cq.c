@@ -190,7 +190,7 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
 
 	err = mlx4_cq_alloc(mdev->dev, cq->size, &cq->wqres.mtt,
 			    &mdev->priv_uar, cq->wqres.db.dma, &cq->mcq,
-			    cq->vector, 0, timestamp_en);
+			    cq->vector, 0, timestamp_en, &cq->wqres.buf, false);
 	if (err)
 		goto free_eq;
 

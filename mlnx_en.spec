@@ -67,8 +67,8 @@
 %endif
 
 %{!?_name: %global _name mlnx-en}
-%{!?_version: %global _version 3.0}
-%{!?_release: %global _release 1.0.1.0.gb558788}
+%{!?_version: %global _version 3.1}
+%{!?_release: %global _release 1.0.4.0.g25ab699}
 
 Name: %{_name}
 Group: System Environment
@@ -88,7 +88,7 @@ BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/MLNX_EN}
 Summary: mlnx-en kernel module(s)
 %description
 ConnectX Ehternet device driver
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 
 %package doc
 Summary: Documentation for the Mellanox Ethernet Driver for Linux
@@ -96,7 +96,7 @@ Group: System/Kernel
 
 %description doc
 Documentation for the Mellanox Ethernet Driver for Linux
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 
 %package sources
 Summary: Sources for the Mellanox Ethernet Driver for Linux
@@ -104,7 +104,7 @@ Group: System Environment/Libraries
 
 %description sources
 Sources for the Mellanox Ethernet Driver for Linux
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 
 %package utils
 Summary: Utilities for the Mellanox Ethernet Driver for Linux
@@ -113,14 +113,14 @@ conflicts: ofed-scripts
 
 %description utils
 Utilities for the Mellanox Ethernet Driver for Linux
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 
 %package KMP
 Summary: mlnx-en kernel module(s)
 Group: System/Kernel
 %description KMP
 mlnx-en kernel module(s)
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 
 # build KMP rpms?
 %if "%{KMP}" == "1"
@@ -147,7 +147,7 @@ Group: System Environment/Base
 Summary: Ethernet NIC Driver
 %description -n mlnx_en
 ConnectX Ehternet device driver
-The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.0-1.0.1.tgz
+The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mlnx-en-3.1-1.0.4.tgz
 %endif #end if "%{KMP}" == "1"
 
 #
@@ -162,7 +162,7 @@ The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mln
 %if "%{WITH_MOD_SIGN}" == "1"
 # call module sign script
 %global __modsign_install_post \
-    $RPM_BUILD_DIR/%{name}-%{version}/source/ofed_scripts/tools/sign-modules $RPM_BUILD_ROOT/lib/modules/ || exit 1 \
+    %{_builddir}/%{name}-%{version}/source/ofed_scripts/tools/sign-modules %{buildroot}/lib/modules/ || exit 1 \
 %{nil}
 
 %global __debug_package 1
@@ -182,18 +182,32 @@ The driver sources are located at: http://www.mellanox.com/downloads/Drivers/mln
 #
 
 %if "%{_vendor}" == "suse"
-%global install_mod_dir updates
 %debug_package
 %endif
 
+%if "%{_vendor}" == "redhat"
+%global __find_requires %{nil}
+%endif
+
+%if "%{_vendor}" == "wrs"
+%global __python_provides %{nil}
+%global __python_requires %{nil}
+%endif
+
+# set modules dir
 %if "%{_vendor}" == "redhat"
 %if 0%{?fedora}
 %global install_mod_dir updates
 %else
 %global install_mod_dir extra/%{name}
 %endif
-%global __find_requires %{nil}
 %endif
+
+%if "%{_vendor}" == "suse"
+%global install_mod_dir updates
+%endif
+
+%{!?install_mod_dir: %global install_mod_dir updates}
 
 %prep
 %setup
@@ -203,7 +217,7 @@ mv "$@" source/
 mkdir obj
 
 %build
-rm -rf $RPM_BUILD_ROOT
+rm -rf %{buildroot}
 export EXTRA_CFLAGS='-DVERSION=\"%version\"'
 for flavor in %{flavors_to_build}; do
 	rm -rf obj/$flavor
@@ -233,13 +247,13 @@ python setup.py build
 cd -
 
 %install
-export INSTALL_MOD_PATH=$RPM_BUILD_ROOT
-export INSTALL_MOD_DIR=%install_mod_dir
+export INSTALL_MOD_PATH=%{buildroot}
+export INSTALL_MOD_DIR=%{install_mod_dir}
 for flavor in %{flavors_to_build}; do
 	cd $PWD/obj/$flavor
 	export KSRC=%{kernel_source $flavor}
 	export KVERSION=%{kernel_release $KSRC}
-	make install KSRC=$KSRC MODULES_DIR=$INSTALL_MOD_DIR DESTDIR=$RPM_BUILD_ROOT KERNELRELEASE=$KVERSION
+	make install KSRC=$KSRC MODULES_DIR=$INSTALL_MOD_DIR DESTDIR=%{buildroot} KERNELRELEASE=$KVERSION
 	# Cleanup unnecessary kernel-generated module dependency files.
 	find $INSTALL_MOD_PATH/lib/modules -iname 'modules.*' -exec rm {} \;
 	cd -
@@ -250,37 +264,37 @@ find %{buildroot} -type f -name \*.ko -exec %{__chmod} u+x \{\} \;
 
 %if "%{_vendor}" == "redhat"
 %if "%{KMP}" == "1"
-%{__install} -d $RPM_BUILD_ROOT%{_sysconfdir}/depmod.d/
-for module in `find $RPM_BUILD_ROOT/ -name '*.ko'`
+%{__install} -d %{buildroot}%{_sysconfdir}/depmod.d/
+for module in `find %{buildroot}/ -name '*.ko'`
 do
 ko_name=${module##*/}
 mod_name=${ko_name/.ko/}
 mod_path=${module/*%{name}}
 mod_path=${mod_path/\/${ko_name}}
-echo "override ${mod_name} * weak-updates/%{name}${mod_path}" >> $RPM_BUILD_ROOT%{_sysconfdir}/depmod.d/%{name}.conf
+echo "override ${mod_name} * weak-updates/%{name}${mod_path}" >> %{buildroot}%{_sysconfdir}/depmod.d/%{name}.conf
 done
 %endif
 %endif
 
-install -D -m 644 mlx4_en.7.gz $RPM_BUILD_ROOT/%{_mandir}/man7/mlx4_en.7.gz
+install -D -m 644 mlx4_en.7.gz %{buildroot}/%{_mandir}/man7/mlx4_en.7.gz
 
-install -D -m 755 source/ofed_scripts/common_irq_affinity.sh $RPM_BUILD_ROOT/%{_sbindir}/common_irq_affinity.sh
-install -D -m 755 source/ofed_scripts/set_irq_affinity.sh $RPM_BUILD_ROOT/%{_sbindir}/set_irq_affinity.sh
-install -D -m 755 source/ofed_scripts/show_irq_affinity.sh $RPM_BUILD_ROOT/%{_sbindir}/show_irq_affinity.sh
-install -D -m 755 source/ofed_scripts/set_irq_affinity_bynode.sh $RPM_BUILD_ROOT/%{_sbindir}/set_irq_affinity_bynode.sh
-install -D -m 755 source/ofed_scripts/set_irq_affinity_cpulist.sh $RPM_BUILD_ROOT/%{_sbindir}/set_irq_affinity_cpulist.sh
-install -D -m 755 source/ofed_scripts/sysctl_perf_tuning $RPM_BUILD_ROOT/sbin/sysctl_perf_tuning
-install -D -m 755 source/ofed_scripts/mlnx_tune $RPM_BUILD_ROOT/usr/sbin/mlnx_tune
-install -D -m 755 source/ofed_scripts/connectx4_eth_max_performance $RPM_BUILD_ROOT/usr/sbin/connectx4_eth_max_performance
-install -D -m 644 source/scripts/mlnx-en.conf $RPM_BUILD_ROOT/etc/mlnx-en.conf
-install -D -m 755 source/scripts/mlnx-en.d $RPM_BUILD_ROOT/etc/init.d/mlnx-en.d
+install -D -m 755 source/ofed_scripts/common_irq_affinity.sh %{buildroot}/%{_sbindir}/common_irq_affinity.sh
+install -D -m 755 source/ofed_scripts/set_irq_affinity.sh %{buildroot}/%{_sbindir}/set_irq_affinity.sh
+install -D -m 755 source/ofed_scripts/show_irq_affinity.sh %{buildroot}/%{_sbindir}/show_irq_affinity.sh
+install -D -m 755 source/ofed_scripts/set_irq_affinity_bynode.sh %{buildroot}/%{_sbindir}/set_irq_affinity_bynode.sh
+install -D -m 755 source/ofed_scripts/set_irq_affinity_cpulist.sh %{buildroot}/%{_sbindir}/set_irq_affinity_cpulist.sh
+install -D -m 755 source/ofed_scripts/sysctl_perf_tuning %{buildroot}/sbin/sysctl_perf_tuning
+install -D -m 755 source/ofed_scripts/mlnx_tune %{buildroot}/usr/sbin/mlnx_tune
+install -D -m 755 source/ofed_scripts/connectx4_eth_max_performance %{buildroot}/usr/sbin/connectx4_eth_max_performance
+install -D -m 644 source/scripts/mlnx-en.conf %{buildroot}/etc/mlnx-en.conf
+install -D -m 755 source/scripts/mlnx-en.d %{buildroot}/etc/init.d/mlnx-en.d
 
-mkdir -p $RPM_BUILD_ROOT/%{_prefix}/src
-cp -r source $RPM_BUILD_ROOT/%{_prefix}/src/%{name}-%{version}
+mkdir -p %{buildroot}/%{_prefix}/src
+cp -r source %{buildroot}/%{_prefix}/src/%{name}-%{version}
 
 touch ofed-files
 cd source/ofed_scripts/utils
-python setup.py install -O1 --root=$RPM_BUILD_ROOT --record ../../../ofed-files
+python setup.py install -O1 --root=%{buildroot} --record ../../../ofed-files
 cd -
 
 if [[ "$(ls %{buildroot}/%{_bindir}/tc_wrap.py* 2>/dev/null)" != "" ]]; then
@@ -288,7 +302,7 @@ if [[ "$(ls %{buildroot}/%{_bindir}/tc_wrap.py* 2>/dev/null)" != "" ]]; then
 fi
 
 %if "%{WITH_SYSTEMD}" == "1"
-install -D -m 644 source/scripts/mlnx-en.d.service $RPM_BUILD_ROOT/%{_prefix}/lib/systemd/system/mlnx-en.d.service
+install -D -m 644 source/scripts/mlnx-en.d.service %{buildroot}/%{_prefix}/lib/systemd/system/mlnx-en.d.service
 %endif
 
 %postun doc
@@ -299,10 +313,20 @@ fi
 %if "%{KMP}" != "1"
 %post -n mlnx_en
 /sbin/depmod -r -ae %{KVERSION}
+# W/A for OEL6.7 inbox modules get locked in memory
+# in dmesg we get: Module mlx4_core locked in memory until next boot
+if (grep -qiE "Oracle.*6.7" /etc/issue 2>/dev/null); then
+	/sbin/dracut --force
+fi
 
 %postun -n mlnx_en
 if [ $1 = 0 ]; then  # 1 : Erase, not upgrade
 	/sbin/depmod -r -ae %{KVERSION}
+	# W/A for OEL6.7 inbox modules get locked in memory
+	# in dmesg we get: Module mlx4_core locked in memory until next boot
+	if (grep -qiE "Oracle.*6.7" /etc/issue 2>/dev/null); then
+		/sbin/dracut --force
+	fi
 fi
 %endif
 

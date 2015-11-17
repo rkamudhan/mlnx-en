@@ -90,6 +90,7 @@ int mlx5_buf_alloc_node(struct mlx5_core_dev *dev, int size, int max_direct,
 		int i;
 
 		buf->direct.buf  = NULL;
+		buf->direct.map  = 0;
 		buf->nbufs       = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 		buf->npages      = buf->nbufs;
 		buf->page_shift  = PAGE_SHIFT;
@@ -145,7 +146,7 @@ void mlx5_buf_free(struct mlx5_core_dev *dev, struct mlx5_buf *buf)
 {
 	int i;
 
-	if (buf->nbufs == 1)
+	if (buf->direct.map)
 		dma_free_coherent(&dev->pdev->dev, buf->size, buf->direct.buf,
 				  buf->direct.map);
 	else {
@@ -266,7 +267,7 @@ void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas)
 	int i;
 
 	for (i = 0; i < buf->npages; i++) {
-		if (buf->nbufs == 1)
+		if (buf->direct.map)
 			addr = buf->direct.map + (i << buf->page_shift);
 		else
 			addr = buf->page_list[i].map;

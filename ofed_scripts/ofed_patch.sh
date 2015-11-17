@@ -79,7 +79,7 @@ apply_patch()
                 ex $QUILT import ${patch}
                 ex $QUILT push patches/${patch##*/}
             else
-                if ! (patch -p1 -l < ${patch} ); then
+                if ! ($PATCH < ${patch} ); then
                     echo "Failed to apply patch: ${patch}"
                     exit 1
                 fi
@@ -313,6 +313,12 @@ if [ "$WITH_GIT" == "yes" ]; then
         branch="backport-${GIT_BRANCH:-$current_branch}"
         ;;
     esac
+fi
+
+if (patch --version 2>&1 | grep -iq BusyBox); then
+	PATCH="patch -p1"
+else
+	PATCH="patch -p1 -l"
 fi
 
 CWD=$(pwd)

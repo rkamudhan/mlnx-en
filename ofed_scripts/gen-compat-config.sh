@@ -18,8 +18,9 @@ KERNEL_VERSION=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^\([0-9]\)\.
 
 # 4.0/3.0 kernel stuff
 COMPAT_LATEST_3_VERSION="19"
-COMPAT_LATEST_4_VERSION="0"
-KERNEL_SUBLEVEL="-1"
+COMPAT_LATEST_4_VERSION="1"
+KERNEL_SUBLEVEL3="-1"
+KERNEL_SUBLEVEL4="-1"
 
 function set_config {
 	VAR=$1
@@ -53,9 +54,9 @@ function is_kernel_symbol_exported {
 # by an order of magnitude.
 
 if [[ ${KERNEL_VERSION} -eq "3" ]]; then
-	KERNEL_SUBLEVEL=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^3\.\([0-9]\+\).*/\1/p')
+	KERNEL_SUBLEVEL3=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^3\.\([0-9]\+\).*/\1/p')
 elif [[ ${KERNEL_VERSION} -eq "4" ]]; then
-	KERNEL_SUBLEVEL=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^4\.\([0-9]\+\).*/\1/p')
+	KERNEL_SUBLEVEL4=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^4\.\([0-9]\+\).*/\1/p')
 else
 	COMPAT_26LATEST_VERSION="39"
 	KERNEL_26SUBLEVEL=$(${MAKE} -C ${KLIB_BUILD} kernelversion | sed -n 's/^2\.6\.\([0-9]\+\).*/\1/p')
@@ -66,13 +67,14 @@ else
 	done
 fi
 
-let KERNEL_SUBLEVEL=${KERNEL_SUBLEVEL}+1
+let KERNEL_SUBLEVEL3=${KERNEL_SUBLEVEL3}+1
+let KERNEL_SUBLEVEL4=${KERNEL_SUBLEVEL4}+1
 if [[ ${KERNEL_VERSION} -ne "4" ]]; then
-	for i in $(seq ${KERNEL_SUBLEVEL} ${COMPAT_LATEST_3_VERSION}); do
+	for i in $(seq ${KERNEL_SUBLEVEL3} ${COMPAT_LATEST_3_VERSION}); do
 		set_config CONFIG_COMPAT_KERNEL_3_${i} y
 	done
 fi
-for i in $(seq ${KERNEL_SUBLEVEL} ${COMPAT_LATEST_4_VERSION}); do
+for i in $(seq ${KERNEL_SUBLEVEL4} ${COMPAT_LATEST_4_VERSION}); do
 	set_config CONFIG_COMPAT_KERNEL_4_${i} y
 done
 
@@ -149,6 +151,11 @@ if [[ ! -z ${UBUNTU14_4_1} ]]; then
 	set_config CONFIG_COMPAT_UBUNTU_14_4 y
 fi
 
+RHEL7_1=$(echo ${KVERSION} | grep 3.10.0-229 )
+if [[ ! -z ${RHEL7_1} ]]; then
+   set_config CONFIG_COMPAT_RHEL_7_1 y
+fi
+
 if [ -e /etc/debian_version ]; then
 	DEBIAN6=$(cat /etc/debian_version | grep 6\.0)
 	if [[ ! -z ${DEBIAN6} ]]; then
@@ -173,6 +180,17 @@ if [[ ${CONFIG_COMPAT_SLES_11_2} = "y" ]]; then
 	set_config CONFIG_COMPAT_IS_NUM_TX_QUEUES y
 	set_config CONFIG_COMPAT_NEW_TX_RING_SCHEME y
 	set_config CONFIG_COMPAT_EN_SYSFS y
+fi
+
+
+FC21=$(echo ${KVERSION} | grep .fc21.)
+if [[ ! -z ${FC21} ]]; then
+	set_config CONFIG_COMPAT_FC_21 y
+fi
+
+EL7=$(echo ${KVERSION} | grep .el7.)
+if [[ ! -z ${EL7} ]]; then
+	set_config CONFIG_COMPAT_EL_7 y
 fi
 
 if (grep -qw SRP_RPORT_LOST ${KLIB_BUILD}/include/scsi/scsi_transport_srp.h > /dev/null 2>&1 || grep -qw SRP_RPORT_LOST /lib/modules/${KVERSION}/source/include/scsi/scsi_transport_srp.h > /dev/null 2>&1); then
@@ -531,7 +549,9 @@ if (grep -q "unsigned lockless" ${KLIB_BUILD}/include/scsi/scsi_host.h > /dev/nu
 fi
 
 if (grep -qw ISCSI_PARAM_DISCOVERY_SESS ${KLIB_BUILD}/include/scsi/iscsi_if.h > /dev/null 2>&1 || grep -qw ISCSI_PARAM_DISCOVERY_SESS /lib/modules/${KVERSION}/source/include/scsi/iscsi_if.h > /dev/null 2>&1); then
-	if [[ ${CONFIG_COMPAT_RHEL_7_0} = "y" ]]; then
+	if [[ ${CONFIG_COMPAT_SLES_12_0} = "y" ]] ||
+	   [[ ${CONFIG_COMPAT_EL_7} = "y" ]] ||
+	   [[ ${CONFIG_COMPAT_FC_21} = "y" ]]; then
 		set_config CONFIG_ISER_DISCOVERY y
 	fi
 fi

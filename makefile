@@ -165,10 +165,15 @@ kernel: $(COMPAT_CONFIG) $(COMPAT_AUTOCONF)
 install_modules:
 	@echo "Installing kernel modules"
 
+ifeq ($(shell /usr/bin/lsb_release -s -i 2>/dev/null | grep -qiE "debian|ubuntu" 2>/dev/null && echo YES || echo ''),)
 	$(MAKE) -C $(KSRC) SUBDIRS="$(CWD)" \
 		INSTALL_MOD_PATH=$(INSTALL_MOD_PATH) \
 		INSTALL_MOD_DIR=$(INSTALL_MOD_DIR) \
 		$(WITH_MAKE_PARAMS) modules_install;
+else
+	install -d $(INSTALL_MOD_PATH)/lib/modules/$(KVERSION)/updates/dkms/
+	find $(CWD)/ -name "*.ko" -exec /bin/cp -f '{}' $(INSTALL_MOD_PATH)/lib/modules/$(KVERSION)/updates/dkms/ \;
+endif
 
 	if [ ! -n "$(INSTALL_MOD_PATH)" ]; then $(DEPMOD) $(KVERSION);fi;
 

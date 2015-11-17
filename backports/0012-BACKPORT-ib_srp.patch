@@ -4,11 +4,9 @@ Subject: [PATCH] BACKPORT: ib_srp
 Signed-off-by: Vladimir Sokolovsky <vlad@mellanox.com>
 Signed-off-by: Sagi Grimberg <sagig@mellanox.com>
 ---
- drivers/infiniband/ulp/srp/ib_srp.c |   87 ++++++++++++++++++++++++++++++++++-
- 1 files changed, 86 insertions(+), 1 deletions(-)
+ drivers/infiniband/ulp/srp/ib_srp.c |   91 ++++++++++++++++++++++++++++++++++-
+ 1 files changed, 90 insertions(+), 1 deletions(-)
 
-diff --git a/drivers/infiniband/ulp/srp/ib_srp.c b/drivers/infiniband/ulp/srp/ib_srp.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/infiniband/ulp/srp/ib_srp.c
 +++ b/drivers/infiniband/ulp/srp/ib_srp.c
 @@ -35,6 +35,7 @@
@@ -31,7 +29,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #include <scsi/scsi.h>
  #include <scsi/scsi_device.h>
-@@ -101,23 +106,45 @@ module_param(register_always, bool, 0444);
+@@ -101,23 +106,45 @@ module_param(register_always, bool, 0444
  MODULE_PARM_DESC(register_always,
  		 "Use memory registration even for contiguous memory regions");
  
@@ -97,7 +95,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int srp_tmo_get(char *buffer, const struct kernel_param *kp)
  {
  	int tmo = *(int *)kp->arg;
-@@ -178,6 +210,7 @@ static struct kernel_param_ops srp_tmo_ops = {
+@@ -184,6 +216,7 @@ static struct kernel_param_ops srp_tmo_o
  	.get = srp_tmo_get,
  	.set = srp_tmo_set,
  };
@@ -105,7 +103,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  static inline struct srp_target_port *host_to_target(struct Scsi_Host *host)
  {
-@@ -1122,16 +1155,20 @@ static void srp_finish_req(struct srp_target_port *target,
+@@ -1133,16 +1166,20 @@ static void srp_finish_req(struct srp_ta
  static void srp_terminate_io(struct srp_rport *rport)
  {
  	struct srp_target_port *target = rport->lld_data;
@@ -126,7 +124,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	for (i = 0; i < target->req_ring_size; ++i) {
  		struct srp_request *req = &target->req_ring[i];
-@@ -1904,7 +1941,50 @@ static void srp_send_completion(struct ib_cq *cq, void *target_ptr)
+@@ -1915,7 +1952,50 @@ static void srp_send_completion(struct i
  	}
  }
  
@@ -178,7 +176,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	struct srp_target_port *target = host_to_target(shost);
  	struct srp_rport *rport = target->rport;
-@@ -2385,8 +2465,10 @@ static int srp_abort(struct scsi_cmnd *scmnd)
+@@ -2401,8 +2481,10 @@ static int srp_abort(struct scsi_cmnd *s
  	if (srp_send_tsk_mgmt(target, req->index, scmnd->device->lun,
  			      SRP_TSK_ABORT_TASK) == 0)
  		ret = SUCCESS;
@@ -189,7 +187,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	else
  		ret = FAILED;
  	srp_free_req(target, req, scmnd, 0);
-@@ -2606,6 +2688,9 @@ static struct scsi_host_template srp_template = {
+@@ -2622,6 +2704,9 @@ static struct scsi_host_template srp_tem
  	.proc_name			= DRV_NAME,
  	.slave_configure		= srp_slave_configure,
  	.info				= srp_target_info,
@@ -199,3 +197,15 @@ index xxxxxxx..xxxxxxx xxxxxx
  	.queuecommand			= srp_queuecommand,
  	.eh_abort_handler		= srp_abort,
  	.eh_device_reset_handler	= srp_reset_device,
+@@ -3049,7 +3134,11 @@ static ssize_t srp_create_target(struct
+ 	if (ret)
+ 		goto err_free_mem;
+ 
++#ifdef HAVE_IB_QUERY_GID_ATTRS
++	ret = ib_query_gid(ibdev, host->port, 0, &target->path.sgid, NULL);
++#else
+ 	ret = ib_query_gid(ibdev, host->port, 0, &target->path.sgid);
++#endif
+ 	if (ret)
+ 		goto err_free_mem;
+ 

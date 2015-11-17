@@ -19,6 +19,7 @@
 #endif
 #include <linux/compat_autoconf.h>
 #include <linux/init.h>
+#include <linux/module.h>
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,16))
 #include <linux/uidgid.h>
 #endif
@@ -79,6 +80,8 @@ void backport_dependency_symbol(void);
 #include <linux/compat-3.15.h>
 #include <linux/compat-3.16.h>
 #include <linux/compat-3.17.h>
+#include <linux/compat-4.0.h>
+#include <linux/compat-4.1.h>
 #endif /* LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29) */
 
 #if (LINUX_VERSION_CODE == KERNEL_VERSION(2,6,18))

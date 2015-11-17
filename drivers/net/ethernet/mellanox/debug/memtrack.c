@@ -45,6 +45,9 @@
 #ifdef kvfree
 	#undef kvfree
 #endif
+#ifdef memdup_user
+	#undef memdup_user
+#endif
 #ifdef kmem_cache_alloc
 	#undef kmem_cache_alloc
 #endif
@@ -53,6 +56,9 @@
 #endif
 #ifdef kmem_cache_free
 	#undef kmem_cache_free
+#endif
+#ifdef kasprintf
+	#undef kasprintf
 #endif
 #ifdef ioremap
 	#undef ioremap
@@ -719,6 +725,9 @@ int is_non_trackable_alloc_func(const char *func_name)
 		"mlx4_en_destroy_allocator",
 		"mlx4_en_complete_rx_desc",
 		"mlx4_alloc_pages",
+		"mlx5e_alloc_striding_rx_wqe",
+		"mlx5e_get_rx_skb",
+		"free_striding_rq_res",
 		/* vnic skb functions */
 		"free_single_frag",
 		"vnic_alloc_rx_skb",

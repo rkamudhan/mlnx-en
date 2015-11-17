@@ -269,8 +269,8 @@ EXPORT_SYMBOL_GPL(mlx4_bf_free);
 
 int mlx4_init_uar_table(struct mlx4_dev *dev)
 {
-	if (dev->caps.num_uars <= 128) {
-		mlx4_err(dev, "Only %d UAR pages (need more than 128)\n",
+	if (dev->caps.num_uars <= NUM_RESERVED_UAR) {
+		mlx4_err(dev, "Only %d UAR pages (need more than NUM_RESERVED_UAR)\n",
 			 dev->caps.num_uars);
 		mlx4_err(dev, "Increase firmware log2_uar_bar_megabytes?\n");
 		return -ENODEV;

@@ -98,6 +98,7 @@ enum {
 	MLX5_QP_ST_QP0				= 0x7,
 	MLX5_QP_ST_QP1				= 0x8,
 	MLX5_QP_ST_RAW_ETHERTYPE		= 0x9,
+	MLX5_QP_ST_SW_CNAK			= 0x10,
 	MLX5_QP_ST_RAW_IPV6			= 0xa,
 	MLX5_QP_ST_SNIFFER			= 0xb,
 	MLX5_QP_ST_SYNC_UMR			= 0xe,
@@ -173,6 +174,7 @@ enum {
 };
 
 enum {
+	MLX5_QP_DRAIN_SIGERR	= 1 << 26,
 	MLX5_QP_LAT_SENSITIVE	= 1 << 28,
 	MLX5_QP_BLOCK_MCAST	= 1 << 30,
 	MLX5_QP_ENABLE_SIG	= 1 << 31,
@@ -206,6 +208,21 @@ struct mlx5_wqe_ctrl_seg {
 	u8			rsvd[2];
 	u8			fm_ce_se;
 	__be32			imm;
+};
+
+enum {
+	MLX5_MLX_FLAG_MASK_VL15	= 0x40,
+	MLX5_MLX_FLAG_MASK_SLR	= 0x20,
+	MLX5_MLX_FLAG_MASK_ICRC = 0x8,
+	MLX5_MLX_FLAG_MASK_FL	= 4
+};
+
+struct mlx5_mlx_seg {
+	__be32		rsvd0;
+	u8		flags;
+	u8		stat_rate_sl;
+	u8		rsvd1[8];
+	__be16		dlid;
 };
 
 #define MLX5_WQE_CTRL_DS_MASK 0x3f
@@ -613,6 +630,7 @@ struct mlx5_modify_qp_mbox_in {
 	__be32			optparam;
 	u8			rsvd0[4];
 	struct mlx5_qp_context	ctx;
+	u8			rsvd2[16];
 };
 
 struct mlx5_modify_qp_mbox_out {
@@ -719,8 +737,7 @@ int mlx5_core_create_qp(struct mlx5_core_dev *dev,
 			struct mlx5_core_qp *qp,
 			struct mlx5_create_qp_mbox_in *in,
 			int inlen);
-int mlx5_core_qp_modify(struct mlx5_core_dev *dev, enum mlx5_qp_state cur_state,
-			enum mlx5_qp_state new_state,
+int mlx5_core_qp_modify(struct mlx5_core_dev *dev, u16 operation,
 			struct mlx5_modify_qp_mbox_in *in, int sqd_event,
 			struct mlx5_core_qp *qp);
 int mlx5_core_destroy_qp(struct mlx5_core_dev *dev,
@@ -750,6 +767,14 @@ void mlx5_debug_dct_remove(struct mlx5_core_dev *dev, struct mlx5_core_dct *dct)
 int mlx5_core_page_fault_resume(struct mlx5_core_dev *dev, u32 qpn,
 				u8 context, int error);
 #endif
+int mlx5_core_create_rq_tracked(struct mlx5_core_dev *dev, u32 *in, int inlen,
+				struct mlx5_core_qp *rq);
+void mlx5_core_destroy_rq_tracked(struct mlx5_core_dev *dev,
+				  struct mlx5_core_qp *rq);
+int mlx5_core_create_sq_tracked(struct mlx5_core_dev *dev, u32 *in, int inlen,
+				struct mlx5_core_qp *sq);
+void mlx5_core_destroy_sq_tracked(struct mlx5_core_dev *dev,
+				  struct mlx5_core_qp *sq);
 
 static inline const char *mlx5_qp_type_str(int type)
 {
@@ -768,6 +793,7 @@ static inline const char *mlx5_qp_type_str(int type)
 	case MLX5_QP_ST_SYNC_UMR: return "SYNC_UMR";
 	case MLX5_QP_ST_PTP_1588: return "PTP_1588";
 	case MLX5_QP_ST_REG_UMR: return "REG_UMR";
+	case MLX5_QP_ST_SW_CNAK: return "DC_CNAK";
 	default: return "Invalid transport type";
 	}
 }

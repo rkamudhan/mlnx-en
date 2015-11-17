@@ -256,8 +256,10 @@ int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 	mlx4_en_fill_qp_context(priv, ring->size, ring->stride, 1, 0, ring->qpn,
 				ring->cqn, &ring->context);
 #endif
+
 	if (ring->bf_alloced)
-		ring->context.usr_page = cpu_to_be32(ring->bf.uar->index);
+		ring->context.usr_page =
+			cpu_to_be32(mlx4_to_hw_uar_index(ring->bf.uar->index));
 
 	err = mlx4_qp_to_ready(mdev->dev, &ring->wqres.mtt, &ring->context,
 			       &ring->qp, &ring->qp_state);
@@ -779,11 +781,7 @@ u16 mlx4_en_select_queue(struct net_device *dev, struct sk_buff *skb)
 	u8 up = 0;
 
 #ifdef HAVE_NEW_TX_RING_SCHEME
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39))
-	if (dev->num_tc)
-#else
 	if (netdev_get_num_tc(dev))
-#endif
 		return skb_tx_hash(dev, skb);
 
 	if (skb_vlan_tag_present(skb))
@@ -827,6 +825,9 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	u32 index, bf_index;
 	__be32 op_own;
 	u16 vlan_tag = 0;
+#ifdef HAVE_NETIF_F_HW_VLAN_STAG_RX
+	u16 vlan_proto = 0;
+#endif
 	int i_frag;
 	int lso_header_size;
 	void *fragptr = NULL;
@@ -863,9 +864,12 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_drop;
 	}
 
-	if (skb_vlan_tag_present(skb))
+	if (skb_vlan_tag_present(skb)) {
 		vlan_tag = skb_vlan_tag_get(skb);
-
+#ifdef HAVE_NETIF_F_HW_VLAN_STAG_RX
+		vlan_proto = be16_to_cpu(skb->vlan_proto);
+#endif
+	}
 
 #ifdef HAVE_NETDEV_TXQ_BQL_PREFETCHW
 	netdev_txq_bql_enqueue_prefetchw(ring->tx_queue);
@@ -962,7 +966,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	 */
 	tx_info->ts_requested = 0;
 	if (unlikely(ring->hwtstamp_tx_type == HWTSTAMP_TX_ON &&
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
+#ifndef HAVE_SKB_SHARED_INFO_UNION_TX_FLAGS
 		     shinfo->tx_flags & SKBTX_HW_TSTAMP)) {
 		shinfo->tx_flags |= SKBTX_IN_PROGRESS;
 #else
@@ -1092,8 +1096,15 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		ring->bf.offset ^= ring->bf.buf_size;
 	} else {
 		tx_desc->ctrl.vlan_tag = cpu_to_be16(vlan_tag);
-		tx_desc->ctrl.ins_vlan = MLX4_WQE_CTRL_INS_VLAN *
-			!!skb_vlan_tag_present(skb);
+#ifdef HAVE_NETIF_F_HW_VLAN_STAG_RX
+		if (vlan_proto == ETH_P_8021AD)
+			tx_desc->ctrl.ins_vlan = MLX4_WQE_CTRL_INS_SVLAN;
+		else if (vlan_proto == ETH_P_8021Q)
+			tx_desc->ctrl.ins_vlan = MLX4_WQE_CTRL_INS_CVLAN;
+#else
+		tx_desc->ctrl.ins_vlan = MLX4_WQE_CTRL_INS_CVLAN;
+#endif
+
 		tx_desc->ctrl.fence_size = real_size;
 
 		/* Ensure new descriptor hits memory

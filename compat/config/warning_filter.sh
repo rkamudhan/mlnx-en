@@ -7,7 +7,7 @@ echo_err()
 	echo -e "$@" 1>&2
 }
 
-regEx="initialization from incompatible pointer type"
+regEx="(initialization from incompatible pointer type|assignment from incompatible pointer type)"
 
 cat $log_file 1>&2
 

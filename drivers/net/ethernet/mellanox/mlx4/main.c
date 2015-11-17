@@ -976,7 +976,14 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.reserved_mrws	     = dev_cap->reserved_mrws;
 
 	/* The first 128 UARs are used for EQ doorbells */
-	dev->caps.reserved_uars	     = max_t(int, 128, dev_cap->reserved_uars);
+	mlx4_dbg(dev, "Actual reserved_uars=%d", dev_cap->reserved_uars);
+	dev->caps.reserved_uars	=
+		max_t(
+			int,
+			NUM_RESERVED_UAR,
+			dev_cap->reserved_uars / (1 << (PAGE_SHIFT - DEFAULT_UAR_PAGE_SHIFT)));
+	mlx4_dbg(dev, "Effective reserved_uars=%d", dev->caps.reserved_uars);
+
 	dev->caps.reserved_pds	     = dev_cap->reserved_pds;
 	dev->caps.reserved_xrcds     = (dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC) ?
 					dev_cap->reserved_xrcds : 0;
@@ -994,6 +1001,21 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.max_gso_sz	     = dev_cap->max_gso_sz;
 	dev->caps.max_rss_tbl_sz     = dev_cap->max_rss_tbl_sz;
 	dev->caps.cq_overrun         = dev_cap->cq_overrun;
+
+	if (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_PHV_EN) {
+		struct mlx4_init_hca_param hca_param;
+
+		memset(&hca_param, 0, sizeof(hca_param));
+		err = mlx4_QUERY_HCA(dev, &hca_param);
+		/* Turn off PHV_EN flag in case phv_check_en is set.
+		 * phv_check_en is a HW check that parse the packet and verify
+		 * phv bit was reported correctly in the wqe. To allow QinQ
+		 * PHV_EN flag should be set and phv_check_en must be cleared
+		 * otherwise QinQ packets will be drop by the HW.
+		 */
+		if (err || hca_param.phv_check_en)
+			dev->caps.flags2 &= ~MLX4_DEV_CAP_FLAG2_PHV_EN;
+	}
 
 	/* Sense port always allowed on supported devices for ConnectX-1 and -2 */
 	if (mlx4_priv(dev)->pci_dev_data & MLX4_PCI_DEV_FORCE_SENSE_PORT)
@@ -1465,7 +1487,7 @@ static void choose_roce_mode(struct mlx4_dev *dev,
 	int req_ud_gid_type;
 	enum mlx4_roce_gid_type alt_gid_type;
 
-	def_roce_mode = (dev_cap->flags & MLX4_DEV_CAP_FLAG_IBOE) ?
+	def_roce_mode = mlx4_is_roce_dev(dev) ?
 		MLX4_ROCE_MODE_1 : MLX4_ROCE_MODE_INVALID;
 
 	mlx4_get_val(roce_mode.dbdf2val.tbl,
@@ -1534,6 +1556,9 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 		mlx4_err(dev, "QUERY_HCA command failed, aborting\n");
 		goto free_mem;
 	}
+	/* Use fake uar value for software layers */
+	hca_param->uar_page_sz = PAGE_SHIFT - 12;
+	hca_param->log_uar_sz = ilog2(dev->caps.num_uars);
 
 	/* fail if the hca has an unknown global capability
 	 * at this time global_caps should be always zeroed
@@ -1616,6 +1641,8 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 		return -ENODEV;
 	}
 
+	mlx4_replace_zero_macs(dev);
+
 	err = mlx4_slave_special_qp_cap(dev);
 	if (err) {
 		mlx4_err(dev, "Set special QP caps failed. aborting\n");
@@ -1678,7 +1705,9 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 	if (func_cap->extra_flags & MLX4_QUERY_FUNC_FLAGS_A0_RES_QP)
 		dev->caps.alloc_res_qp_mask |= MLX4_RESERVE_A0_QP;
 
-	if (func_cap->extra_flags & MLX4_QUERY_FUNC_FLAGS_ROCE_ADDR)
+	if (!(func_cap->extra_flags & MLX4_QUERY_FUNC_FLAGS_ROCE_ADDR))
+		dev->caps.roce_addr_support = 0;
+	else
 		dev->caps.roce_addr_support = 1;
 
 	choose_roce_mode(dev, dev_cap);
@@ -2878,8 +2907,11 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 
 		dev->caps.max_fmr_maps = (1 << (32 - ilog2(dev->caps.num_mpts))) - 1;
 
-		init_hca.log_uar_sz = ilog2(dev->caps.num_uars);
-		init_hca.uar_page_sz = PAGE_SHIFT - 12;
+		/* Always set UAR page size 4KB */
+		init_hca.log_uar_sz = ilog2(dev->caps.num_uars) + PAGE_SHIFT
+							- DEFAULT_UAR_PAGE_SHIFT;
+		init_hca.uar_page_sz = DEFAULT_UAR_PAGE_SHIFT - 12;
+
 		init_hca.mw_enabled = 0;
 		if (dev->caps.flags & MLX4_DEV_CAP_FLAG_MEM_WINDOW ||
 		    dev->caps.bmme_flags & MLX4_BMME_FLAG_TYPE_2_WIN)
@@ -4085,30 +4117,6 @@ static void mlx4_free_ownership(struct mlx4_dev *dev)
 #define SRIOV_VALID_STATE(flags) (!!((flags) & MLX4_FLAG_SRIOV)	==\
 				  !!((flags) & MLX4_FLAG_MASTER))
 
-#ifndef HAVE_PCI_NUM_VF
-static int mlx4_find_vfs(struct pci_dev *pdev)
-{
-	struct pci_dev *dev;
-	int vfs = 0, pos;
-	u16 offset, stride;
-
-	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
-	if (!pos)
-		return 0;
-	pci_read_config_word(pdev, pos + PCI_SRIOV_VF_OFFSET, &offset);
-	pci_read_config_word(pdev, pos + PCI_SRIOV_VF_STRIDE, &stride);
-
-	dev = pci_get_device(pdev->vendor, PCI_ANY_ID, NULL);
-	while (dev) {
-		if (dev->is_virtfn && pci_physfn(dev) == pdev) {
-			vfs++;
-		}
-		dev = pci_get_device(pdev->vendor, PCI_ANY_ID, dev);
-	}
-	return vfs;
-}
-#endif
-
 static u64 mlx4_enable_sriov(struct mlx4_dev *dev, struct pci_dev *pdev,
 			     u8 total_vfs, int existing_vfs, int reset_flow)
 {
@@ -4258,11 +4266,7 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
 
 		if (total_vfs) {
 			dev->flags = MLX4_FLAG_MASTER;
-#ifdef HAVE_PCI_NUM_VF
 			existing_vfs = pci_num_vf(pdev);
-#else
-			existing_vfs = mlx4_find_vfs(pdev);
-#endif
 			if (existing_vfs)
 				dev->flags |= MLX4_FLAG_SRIOV;
 			dev->persist->num_vfs = total_vfs;

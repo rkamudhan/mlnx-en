@@ -32,6 +32,13 @@
 
 #include "en.h"
 
+static const char mlx5e_test_names[][ETH_GSTRING_LEN] = {
+	"Speed Test",
+	"Link Test",
+	"Health Test",
+	"Loopback Test",
+};
+
 static void mlx5e_get_drvinfo(struct net_device *dev,
 			      struct ethtool_drvinfo *drvinfo)
 {
@@ -42,7 +49,7 @@ static void mlx5e_get_drvinfo(struct net_device *dev,
 	strlcpy(drvinfo->version, DRIVER_VERSION " (" DRIVER_RELDATE ")",
 		sizeof(drvinfo->version));
 	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version),
-		 "%d.%d.%d",
+		 "%d.%d.%04d",
 		 fw_rev_maj(mdev), fw_rev_min(mdev), fw_rev_sub(mdev));
 	strlcpy(drvinfo->bus_info, pci_name(mdev->pdev),
 		sizeof(drvinfo->bus_info));
@@ -52,133 +59,133 @@ static const struct {
 	u32 supported;
 	u32 advertised;
 	u32 speed;
-} ptys2ethtool_table[MLX5E_LINK_MODES_NUMBER] = {
-	[MLX5E_1000BASE_CX_SGMII] = {
+} ptys2ethtool_table[MLX5_LINK_MODES_NUMBER] = {
+	[MLX5_1000BASE_CX_SGMII] = {
 		.supported  = SUPPORTED_1000baseKX_Full,
 		.advertised = ADVERTISED_1000baseKX_Full,
 		.speed      = SPEED_1000,
 	},
-	[MLX5E_1000BASE_KX] = {
+	[MLX5_1000BASE_KX] = {
 		.supported  = SUPPORTED_1000baseKX_Full,
 		.advertised = ADVERTISED_1000baseKX_Full,
 		.speed      = SPEED_1000,
 	},
-	[MLX5E_10GBASE_CX4] = {
+	[MLX5_10GBASE_CX4] = {
 		.supported  = SUPPORTED_10000baseKX4_Full,
 		.advertised = ADVERTISED_10000baseKX4_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_10GBASE_KX4] = {
+	[MLX5_10GBASE_KX4] = {
 		.supported  = SUPPORTED_10000baseKX4_Full,
 		.advertised = ADVERTISED_10000baseKX4_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_10GBASE_KR] = {
+	[MLX5_10GBASE_KR] = {
 		.supported  = SUPPORTED_10000baseKR_Full,
 		.advertised = ADVERTISED_10000baseKR_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_20GBASE_KR2] = {
+	[MLX5_20GBASE_KR2] = {
 		.supported  = SUPPORTED_20000baseKR2_Full,
 		.advertised = ADVERTISED_20000baseKR2_Full,
 		.speed      = SPEED_20000,
 	},
-	[MLX5E_40GBASE_CR4] = {
+	[MLX5_40GBASE_CR4] = {
 		.supported  = SUPPORTED_40000baseCR4_Full,
 		.advertised = ADVERTISED_40000baseCR4_Full,
 		.speed      = SPEED_40000,
 	},
-	[MLX5E_40GBASE_KR4] = {
+	[MLX5_40GBASE_KR4] = {
 		.supported  = SUPPORTED_40000baseKR4_Full,
 		.advertised = ADVERTISED_40000baseKR4_Full,
 		.speed      = SPEED_40000,
 	},
-	[MLX5E_56GBASE_R4] = {
+	[MLX5_56GBASE_R4] = {
 		.supported  = SUPPORTED_56000baseKR4_Full,
 		.advertised = ADVERTISED_56000baseKR4_Full,
 		.speed      = SPEED_56000,
 	},
-	[MLX5E_10GBASE_CR] = {
+	[MLX5_10GBASE_CR] = {
 		.supported  = SUPPORTED_10000baseKR_Full,
 		.advertised = ADVERTISED_10000baseKR_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_10GBASE_SR] = {
+	[MLX5_10GBASE_SR] = {
 		.supported  = SUPPORTED_10000baseKR_Full,
 		.advertised = ADVERTISED_10000baseKR_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_10GBASE_ER] = {
+	[MLX5_10GBASE_ER] = {
 		.supported  = SUPPORTED_10000baseKR_Full,/* TODO: verify */
 		.advertised = ADVERTISED_10000baseKR_Full,
 		.speed      = SPEED_10000,
 	},
-	[MLX5E_40GBASE_SR4] = {
+	[MLX5_40GBASE_SR4] = {
 		.supported  = SUPPORTED_40000baseSR4_Full,
 		.advertised = ADVERTISED_40000baseSR4_Full,
 		.speed      = SPEED_40000,
 	},
-	[MLX5E_40GBASE_LR4] = {
+	[MLX5_40GBASE_LR4] = {
 		.supported  = SUPPORTED_40000baseLR4_Full,
 		.advertised = ADVERTISED_40000baseLR4_Full,
 		.speed      = SPEED_40000,
 	},
-	[MLX5E_100GBASE_CR4] = {
+	[MLX5_100GBASE_CR4] = {
 		.supported  = /*SUPPORTED_100000baseCR4_Full*/ 0,
 		.advertised = /*ADVERTISED_100000baseCR4_Full*/ 0,
 		.speed      = SPEED_100000,
 	},
-	[MLX5E_100GBASE_SR4] = {
+	[MLX5_100GBASE_SR4] = {
 		.supported  = /*SUPPORTED_100000baseSR4_Full*/ 0,
 		.advertised = /*ADVERTISED_100000baseSR4_Full*/ 0,
 		.speed      = SPEED_100000,
 	},
-	[MLX5E_100GBASE_KR4] = {
+	[MLX5_100GBASE_KR4] = {
 		.supported  = /*SUPPORTED_100000baseKR4_Full*/ 0,
 		.advertised = /*ADVERTISED_100000baseKR4_Full*/ 0,
 		.speed      = SPEED_100000,
 	},
-	[MLX5E_100GBASE_LR4] = {
+	[MLX5_100GBASE_LR4] = {
 		.supported  = /*SUPPORTED_1000000baseLR4_Full*/ 0,
 		.advertised = /*ADVERTISED_1000000baseLR4_Full*/ 0,
 		.speed      = SPEED_100000,
 	},
-	[MLX5E_100BASE_TX]   = {
+	[MLX5_100BASE_TX]   = {
 		.supported  = /*SUPPORTED_100baseTX_Full*/ 0,
 		.advertised = /*ADVERTISED_100baseTX_Full*/ 0,
 		.speed      = SPEED_100,
 	},
-	[MLX5E_100BASE_T]    = {
+	[MLX5_1000BASE_T]    = {
 		.supported  = SUPPORTED_100baseT_Full,
 		.advertised = ADVERTISED_100baseT_Full,
-		.speed      = SPEED_100,
-	},
-	[MLX5E_10GBASE_T]    = {
-		.supported  = SUPPORTED_10000baseT_Full,
-		.advertised = ADVERTISED_10000baseT_Full,
 		.speed      = SPEED_1000,
 	},
-	[MLX5E_25GBASE_CR]   = {
+	[MLX5_10GBASE_T]    = {
+		.supported  = SUPPORTED_10000baseT_Full,
+		.advertised = ADVERTISED_10000baseT_Full,
+		.speed      = SPEED_10000,
+	},
+	[MLX5_25GBASE_CR]   = {
 		.supported  = /*SUPPORTED_25000baseCR_Full*/ 0,
 		.advertised = /*ADVERTISED_25000baseCR_Full*/ 0,
 		.speed      = SPEED_25000,
 	},
-	[MLX5E_25GBASE_KR]   = {
+	[MLX5_25GBASE_KR]   = {
 		.supported  = /*SUPPORTED_25000baseKR_Full*/ 0,
 		.advertised = /*ADVERTISED_25000baseKR_Full*/ 0,
 		.speed      = SPEED_25000,
 	},
-	[MLX5E_25GBASE_SR]   = {
+	[MLX5_25GBASE_SR]   = {
 		.supported  = /*SUPPORTED_25000baseSR_Full*/ 0,
 		.advertised = /*ADVERTISED_25000baseSR_Full*/ 0,
 		.speed      = SPEED_25000,
 	},
-	[MLX5E_50GBASE_CR2]  = {
+	[MLX5_50GBASE_CR2]  = {
 		.supported  = /*SUPPORTED_50000baseCR2_Full*/ 0,
 		.advertised = /*ADVERTISED_50000baseCR2_Full*/ 0,
 		.speed      = SPEED_50000,
 	},
-	[MLX5E_50GBASE_KR2]  = {
+	[MLX5_50GBASE_KR2]  = {
 		.supported  = /*SUPPORTED_50000baseKR2_Full*/ 0,
 		.advertised = /*ADVERTISED_50000baseKR2_Full*/ 0,
 		.speed      = SPEED_50000,
@@ -194,12 +201,14 @@ static int mlx5e_get_sset_count(struct net_device *dev, int sset)
 		return NUM_VPORT_COUNTERS + NUM_PPORT_COUNTERS +
 		       priv->params.num_channels * NUM_RQ_STATS +
 		       priv->params.num_channels * priv->params.num_tc *
-						   NUM_SQ_STATS;
-#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
+						   NUM_SQ_STATS +
+		       NUM_Q_COUNTERS;
+	case ETH_SS_TEST:
+		return MLX5E_NUM_SELF_TEST;
+#ifdef HAVE_GET_SET_PRIV_FLAGS
 	case ETH_SS_PRIV_FLAGS:
 		return ARRAY_SIZE(mlx5e_priv_flags);
 #endif
-	/* fallthrough */
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -212,16 +221,16 @@ static void mlx5e_get_strings(struct net_device *dev,
 	struct mlx5e_priv *priv = netdev_priv(dev);
 
 	switch (stringset) {
+#ifdef HAVE_GET_SET_PRIV_FLAGS
 	case ETH_SS_PRIV_FLAGS:
-#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
 		for (i = 0; i < ARRAY_SIZE(mlx5e_priv_flags); i++)
 			strcpy(data + i * ETH_GSTRING_LEN,
 			       mlx5e_priv_flags[i]);
-#endif
 		break;
-
+#endif
 	case ETH_SS_TEST:
-		/* TODO: not implemented yet */
+		for (i = 0; i < MLX5E_NUM_SELF_TEST; i++)
+			strcpy(data + i * ETH_GSTRING_LEN, mlx5e_test_names[i]);
 		break;
 
 	case ETH_SS_STATS:
@@ -234,6 +243,9 @@ static void mlx5e_get_strings(struct net_device *dev,
 		for (i = 0; i < NUM_PPORT_COUNTERS; i++)
 			strcpy(data + (idx++) * ETH_GSTRING_LEN,
 			       pport_strings[i]);
+
+		sprintf(data + (idx++) * ETH_GSTRING_LEN,
+			"q_counter_%s", qcounter_stats_strings[0]);
 
 		/* per channel counters */
 		for (i = 0; i < priv->params.num_channels; i++)
@@ -271,6 +283,9 @@ static void mlx5e_get_ethtool_stats(struct net_device *dev,
 
 	for (i = 0; i < NUM_PPORT_COUNTERS; i++)
 		data[idx++] = be64_to_cpu(((__be64 *)&priv->stats.pport)[i]);
+
+	data[idx++] = (priv->counter_set_id != -1) ? priv->stats.out_of_buffer
+						     : 0;
 
 	/* per channel counters */
 	for (i = 0; i < priv->params.num_channels; i++)
@@ -440,6 +455,10 @@ static int mlx5e_set_coalesce(struct net_device *netdev,
 	priv->params.rx_cq_moderation_usec = coal->rx_coalesce_usecs;
 	priv->params.rx_cq_moderation_pkts = coal->rx_max_coalesced_frames;
 
+	/* Consider using state_lock instead */
+	if (!test_bit(MLX5E_STATE_OPENED, &priv->state))
+		return 0;
+
 	for (i = 0; i < priv->params.num_channels; ++i) {
 		c = priv->channel[i];
 
@@ -463,8 +482,8 @@ static u32 ptys2ethtool_supported_link(u32 eth_proto_cap)
 	int i;
 	u32 supoprted_modes = 0;
 
-	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
-		if (eth_proto_cap & MLX5E_PROT_MASK(i))
+	for (i = 0; i < MLX5_LINK_MODES_NUMBER; ++i) {
+		if (eth_proto_cap & MLX5_PROT_MASK(i))
 			supoprted_modes |= ptys2ethtool_table[i].supported;
 	}
 	return supoprted_modes;
@@ -475,8 +494,8 @@ static u32 ptys2ethtool_adver_link(u32 eth_proto_cap)
 	int i;
 	u32 advertising_modes = 0;
 
-	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
-		if (eth_proto_cap & MLX5E_PROT_MASK(i))
+	for (i = 0; i < MLX5_LINK_MODES_NUMBER; ++i) {
+		if (eth_proto_cap & MLX5_PROT_MASK(i))
 			advertising_modes |= ptys2ethtool_table[i].advertised;
 	}
 	return advertising_modes;
@@ -491,20 +510,20 @@ static u32 ptys2ethtool_supported_port(u32 eth_proto_cap)
 	MLX5E_10GBASE_CX4	 = 2,
 	*/
 
-	if (eth_proto_cap & (MLX5E_PROT_MASK(MLX5E_10GBASE_CR)
-			   | MLX5E_PROT_MASK(MLX5E_10GBASE_SR)
-			   | MLX5E_PROT_MASK(MLX5E_40GBASE_CR4)
-			   | MLX5E_PROT_MASK(MLX5E_40GBASE_SR4)
-			   | MLX5E_PROT_MASK(MLX5E_100GBASE_SR4)
-			   | MLX5E_PROT_MASK(MLX5E_1000BASE_CX_SGMII))) {
+	if (eth_proto_cap & (MLX5_PROT_MASK(MLX5_10GBASE_CR)
+			   | MLX5_PROT_MASK(MLX5_10GBASE_SR)
+			   | MLX5_PROT_MASK(MLX5_40GBASE_CR4)
+			   | MLX5_PROT_MASK(MLX5_40GBASE_SR4)
+			   | MLX5_PROT_MASK(MLX5_100GBASE_SR4)
+			   | MLX5_PROT_MASK(MLX5_1000BASE_CX_SGMII))) {
 		return SUPPORTED_FIBRE;
 	}
 
-	if (eth_proto_cap & (MLX5E_PROT_MASK(MLX5E_100GBASE_KR4)
-			   | MLX5E_PROT_MASK(MLX5E_40GBASE_KR4)
-			   | MLX5E_PROT_MASK(MLX5E_10GBASE_KR)
-			   | MLX5E_PROT_MASK(MLX5E_10GBASE_KX4)
-			   | MLX5E_PROT_MASK(MLX5E_1000BASE_KX))) {
+	if (eth_proto_cap & (MLX5_PROT_MASK(MLX5_100GBASE_KR4)
+			   | MLX5_PROT_MASK(MLX5_40GBASE_KR4)
+			   | MLX5_PROT_MASK(MLX5_10GBASE_KR)
+			   | MLX5_PROT_MASK(MLX5_10GBASE_KX4)
+			   | MLX5_PROT_MASK(MLX5_1000BASE_KX))) {
 		return SUPPORTED_Backplane;
 	}
 	return 0;
@@ -521,8 +540,8 @@ static void get_speed_duplex(struct net_device *netdev,
 	if (!netif_carrier_ok(netdev))
 		goto out;
 
-	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
-		if (eth_proto_oper & MLX5E_PROT_MASK(i)) {
+	for (i = 0; i < MLX5_LINK_MODES_NUMBER; ++i) {
+		if (eth_proto_oper & MLX5_PROT_MASK(i)) {
 			speed = ptys2ethtool_table[i].speed;
 			duplex = DUPLEX_FULL;
 			break;
@@ -557,23 +576,23 @@ static u8 get_connector_port(u32 eth_proto)
 	MLX5E_10GBASE_CX4	 = 2,
 	*/
 
-	if (eth_proto & (MLX5E_PROT_MASK(MLX5E_10GBASE_SR)
-			 | MLX5E_PROT_MASK(MLX5E_40GBASE_SR4)
-			 | MLX5E_PROT_MASK(MLX5E_100GBASE_SR4)
-			 | MLX5E_PROT_MASK(MLX5E_1000BASE_CX_SGMII))) {
+	if (eth_proto & (MLX5_PROT_MASK(MLX5_10GBASE_SR)
+			 | MLX5_PROT_MASK(MLX5_40GBASE_SR4)
+			 | MLX5_PROT_MASK(MLX5_100GBASE_SR4)
+			 | MLX5_PROT_MASK(MLX5_1000BASE_CX_SGMII))) {
 			return PORT_FIBRE;
 	}
 
-	if (eth_proto & (MLX5E_PROT_MASK(MLX5E_40GBASE_CR4)
-			 | MLX5E_PROT_MASK(MLX5E_10GBASE_CR)
-			 | MLX5E_PROT_MASK(MLX5E_100GBASE_CR4))) {
+	if (eth_proto & (MLX5_PROT_MASK(MLX5_40GBASE_CR4)
+			 | MLX5_PROT_MASK(MLX5_10GBASE_CR)
+			 | MLX5_PROT_MASK(MLX5_100GBASE_CR4))) {
 			return PORT_DA;
 	}
 
-	if (eth_proto & (MLX5E_PROT_MASK(MLX5E_10GBASE_KX4)
-			 | MLX5E_PROT_MASK(MLX5E_10GBASE_KR)
-			 | MLX5E_PROT_MASK(MLX5E_40GBASE_KR4)
-			 | MLX5E_PROT_MASK(MLX5E_100GBASE_KR4))) {
+	if (eth_proto & (MLX5_PROT_MASK(MLX5_10GBASE_KX4)
+			 | MLX5_PROT_MASK(MLX5_10GBASE_KR)
+			 | MLX5_PROT_MASK(MLX5_40GBASE_KR4)
+			 | MLX5_PROT_MASK(MLX5_100GBASE_KR4))) {
 			return PORT_NONE;
 	}
 
@@ -649,9 +668,9 @@ static u32 mlx5e_ethtool2ptys_adver_link(u32 link_modes)
 {
 	u32 i, ptys_modes = 0;
 
-	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
+	for (i = 0; i < MLX5_LINK_MODES_NUMBER; ++i) {
 		if (ptys2ethtool_table[i].advertised & link_modes)
-			ptys_modes |= MLX5E_PROT_MASK(i);
+			ptys_modes |= MLX5_PROT_MASK(i);
 	}
 
 	return ptys_modes;
@@ -661,9 +680,9 @@ static u32 mlx5e_ethtool2ptys_speed_link(u32 speed)
 {
 	u32 i, speed_links = 0;
 
-	for (i = 0; i < MLX5E_LINK_MODES_NUMBER; ++i) {
+	for (i = 0; i < MLX5_LINK_MODES_NUMBER; ++i) {
 		if (ptys2ethtool_table[i].speed == speed)
-			speed_links |= MLX5E_PROT_MASK(i);
+			speed_links |= MLX5_PROT_MASK(i);
 	}
 
 	return speed_links;
@@ -677,7 +696,6 @@ static int mlx5e_set_settings(struct net_device *netdev,
 	u32 link_modes;
 	u32 speed;
 	u32 eth_proto_cap, eth_proto_admin;
-	u8 port_status;
 	int err;
 
 	speed = ethtool_cmd_speed(cmd);
@@ -711,61 +729,189 @@ static int mlx5e_set_settings(struct net_device *netdev,
 	if (link_modes == eth_proto_admin)
 		goto out;
 
-	err = mlx5_set_port_proto(mdev, link_modes, MLX5_PTYS_EN);
-	if (err) {
-		netdev_err(netdev, "%s: set port eth proto admin failed: %d\n",
-			   __func__, err);
-		goto out;
-	}
+	mlx5_set_port_status(mdev, MLX5_PORT_DOWN);
+	mlx5_set_port_proto(mdev, link_modes, MLX5_PTYS_EN);
+	mlx5_set_port_status(mdev, MLX5_PORT_UP);
 
-	err = mlx5_query_port_status(mdev, &port_status);
-	if (err)
-		goto out;
-
-	if (port_status == MLX5_PORT_DOWN)
-		return 0;
-
-	err = mlx5_set_port_status(mdev, MLX5_PORT_DOWN);
-	if (err)
-		goto out;
-	err = mlx5_set_port_status(mdev, MLX5_PORT_UP);
 out:
 	return err;
 }
 
-#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
+static int mlx5e_set_pauseparam(struct net_device *netdev,
+				struct ethtool_pauseparam *pauseparam)
+{
+	struct mlx5e_priv *priv    = netdev_priv(netdev);
+	struct mlx5_core_dev *mdev = priv->mdev;
+	int err;
+
+	err = mlx5_set_port_pause(mdev, pauseparam->rx_pause,
+				  pauseparam->tx_pause);
+	if (err) {
+		netdev_err(netdev, "%s: mlx5_set_port_pause failed:0x%x\n",
+			   __func__, err);
+	}
+
+	return err;
+}
+
+static void mlx5e_get_pauseparam(struct net_device *netdev,
+				 struct ethtool_pauseparam *pauseparam)
+{
+	struct mlx5e_priv *priv    = netdev_priv(netdev);
+	struct mlx5_core_dev *mdev = priv->mdev;
+	int err;
+
+	err = mlx5_query_port_pause(mdev, &pauseparam->rx_pause,
+				    &pauseparam->tx_pause);
+	if (err) {
+		netdev_err(netdev, "%s: mlx5_query_port_pause failed:0x%x\n",
+			   __func__, err);
+	}
+}
+
+static void mlx5e_fill_wol_supported(struct mlx5_core_dev *mdev,
+				     struct ethtool_wolinfo *wol)
+{
+
+	if (MLX5_CAP_GEN(mdev, wol_g))
+		wol->supported |= WAKE_MAGIC;
+
+	if (MLX5_CAP_GEN(mdev, wol_s))
+		wol->supported |= WAKE_MAGICSECURE;
+
+	if (MLX5_CAP_GEN(mdev, wol_a))
+		wol->supported |= WAKE_ARP;
+
+	if (MLX5_CAP_GEN(mdev, wol_b))
+		wol->supported |= WAKE_BCAST;
+
+	if (MLX5_CAP_GEN(mdev, wol_m))
+		wol->supported |= WAKE_MCAST;
+
+	if (MLX5_CAP_GEN(mdev, wol_u))
+		wol->supported |= WAKE_UCAST;
+
+	if (MLX5_CAP_GEN(mdev, wol_p))
+		wol->supported |= WAKE_PHY;
+}
+
+static void mlx5e_get_wol(struct net_device *netdev,
+			  struct ethtool_wolinfo *wol)
+{
+	struct mlx5e_priv *priv    = netdev_priv(netdev);
+	struct mlx5_core_dev *mdev = priv->mdev;
+	u8 wol_mode;
+	int err;
+
+	wol->supported = 0;
+	wol->wolopts = 0;
+
+	mlx5e_fill_wol_supported(mdev, wol);
+
+	err = mlx5_query_port_wol(mdev, &wol_mode);
+
+	if (!err) {
+		if (wol_mode == MLX5E_WOL_DISABLE) {
+			wol->wolopts = 0;
+			return;
+		}
+
+		if (wol_mode & MLX5E_WOL_MAGIC)
+			wol->wolopts |= WAKE_MAGIC;
+
+		if (wol_mode & MLX5E_WOL_SECURED_MAGIC)
+			wol->wolopts |= WAKE_MAGICSECURE;
+
+		if (wol_mode & MLX5E_WOL_ARP)
+			wol->wolopts |= WAKE_ARP;
+
+		if (wol_mode & MLX5E_WOL_BROADCAST)
+			wol->wolopts |= WAKE_BCAST;
+
+		if (wol_mode & MLX5E_WOL_MULTICAST)
+			wol->wolopts |= WAKE_MCAST;
+
+		if (wol_mode & MLX5E_WOL_UNICAST)
+			wol->wolopts |= WAKE_UCAST;
+
+		if (wol_mode & MLX5E_WOL_PHY_ACTIVITY)
+			wol->wolopts |= WAKE_PHY;
+	}
+}
+
+static int mlx5e_set_wol(struct net_device *netdev,
+			 struct ethtool_wolinfo *wol)
+{
+	struct mlx5e_priv *priv    = netdev_priv(netdev);
+	struct mlx5_core_dev *mdev = priv->mdev;
+	u8 wol_mode = 0;
+
+	if (!wol->wolopts)
+		wol_mode = MLX5E_WOL_DISABLE;
+
+	if ((wol->wolopts & WAKE_MAGIC) && MLX5_CAP_GEN(mdev, wol_g))
+		wol_mode |= MLX5E_WOL_MAGIC;
+
+	if ((wol->wolopts & WAKE_MAGICSECURE) && MLX5_CAP_GEN(mdev, wol_s))
+		wol_mode |= MLX5E_WOL_SECURED_MAGIC;
+
+	if ((wol->wolopts & WAKE_ARP) && MLX5_CAP_GEN(mdev, wol_a))
+		wol_mode |= MLX5E_WOL_ARP;
+
+	if ((wol->wolopts & WAKE_BCAST) && MLX5_CAP_GEN(mdev, wol_b))
+		wol_mode |= MLX5E_WOL_BROADCAST;
+
+	if ((wol->wolopts & WAKE_MCAST) && MLX5_CAP_GEN(mdev, wol_m))
+		wol_mode |= MLX5E_WOL_MULTICAST;
+
+	if ((wol->wolopts & WAKE_UCAST) && MLX5_CAP_GEN(mdev, wol_u))
+		wol_mode |= MLX5E_WOL_UNICAST;
+
+	if ((wol->wolopts & WAKE_PHY) && MLX5_CAP_GEN(mdev, wol_p))
+		wol_mode |= MLX5E_WOL_PHY_ACTIVITY;
+
+	return mlx5_set_port_wol(mdev, wol_mode);
+}
+
+static u32 mlx5e_get_msglevel(struct net_device *dev)
+{
+	return ((struct mlx5e_priv *)netdev_priv(dev))->msg_level;
+}
+
+static void mlx5e_set_msglevel(struct net_device *dev, u32 val)
+{
+	((struct mlx5e_priv *)netdev_priv(dev))->msg_level = val;
+}
+
+#ifdef HAVE_GET_SET_PRIV_FLAGS
 static int mlx5e_set_priv_flags(struct net_device *dev, u32 flags)
 {
 	struct mlx5e_priv *priv = netdev_priv(dev);
+#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
 	u32 changes = flags ^ priv->pflags;
+#endif
 	struct mlx5e_params new_params;
 	bool update_params = false;
-	int i = 0;
 
 	mutex_lock(&priv->state_lock);
 	new_params = priv->params;
 
-	if (changes & MLX5E_PRIV_FLAG_SWLRO) {
-		priv->pflags ^= MLX5E_PRIV_FLAG_SWLRO;
+#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
+	if (changes & MLX5E_PRIV_FLAG_HWLRO) {
+		priv->pflags ^= MLX5E_PRIV_FLAG_HWLRO;
 		if (!test_bit(MLX5E_STATE_OPENED, &priv->state))
 			goto out;
-		for (i = 0; i < priv->params.num_channels; i++)
-			priv->channel[i]->rq.flags ^= MLX5E_RQ_FLAG_SWLRO;
+		if (priv->params.lro_en)
+			update_params = true;
 	}
+#endif
 
-	if (changes & MLX5E_PRIV_FLAG_HWLRO) {
-		new_params.lro_en = !!(flags & MLX5E_PRIV_FLAG_HWLRO);
-		priv->pflags ^= MLX5E_PRIV_FLAG_HWLRO;
-		update_params = true;
-		if (new_params.lro_en)
-			priv->netdev->flags |= NETIF_F_LRO;
-		else
-			priv->netdev->flags &= ~NETIF_F_LRO;
-	}
-
+	/* will be added on future commits */
 	if (update_params)
 		mlx5e_update_priv_params(priv, &new_params);
+#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
 out:
+#endif
 	mutex_unlock(&priv->state_lock);
 	return !(flags == priv->pflags);
 }
@@ -778,12 +924,74 @@ static u32 mlx5e_get_priv_flags(struct net_device *dev)
 }
 #endif
 
+#ifdef LEGACY_ETHTOOL_OPS
+#if (defined(HAVE_GET_SET_FLAGS) || defined(HAVE_GET_SET_FLAGS_EXT))
+static int mlx5e_set_flags(struct net_device *dev, u32 data)
+{
+	struct mlx5e_priv *priv = netdev_priv(dev);
+	struct mlx5e_params new_params;
+	u32 changes = data ^ priv->netdev->flags;
+	bool update_params = false;
+
+	mutex_lock(&priv->state_lock);
+
+	new_params = priv->params;
+
+	if (changes & ETH_FLAG_LRO) {
+		new_params.lro_en = !new_params.lro_en;
+		update_params = true;
+	}
+
+	if (!update_params)
+		goto out;
+
+	mlx5e_update_priv_params(priv, &new_params);
+
+	if (priv->params.lro_en) {
+		dev->features |= NETIF_F_LRO;
+		priv->netdev->flags |= NETIF_F_LRO;
+	} else {
+		dev->features &= ~NETIF_F_LRO;
+		priv->netdev->flags &= ~NETIF_F_LRO;
+	}
+
+out:
+	mutex_unlock(&priv->state_lock);
+	return 0;
+}
+
+static u32 mlx5e_get_flags(struct net_device *dev)
+{
+	return ((struct mlx5e_priv *)netdev_priv(dev))->netdev->flags;
+}
+#endif
+
+#if (defined(HAVE_GET_SET_TSO) || defined(HAVE_GET_SET_TSO_EXT))
+static u32 mlx5e_get_tso(struct net_device *dev)
+{
+       return (dev->features & NETIF_F_TSO) != 0;
+}
+
+static int mlx5e_set_tso(struct net_device *dev, u32 data)
+{
+       if (data)
+               dev->features |= (NETIF_F_TSO | NETIF_F_TSO6);
+       else
+               dev->features &= ~(NETIF_F_TSO | NETIF_F_TSO6);
+       return 0;
+}
+#endif
+#endif
+
 const struct ethtool_ops mlx5e_ethtool_ops = {
 	.get_drvinfo       = mlx5e_get_drvinfo,
 	.get_link          = ethtool_op_get_link,
 	.get_strings       = mlx5e_get_strings,
 	.get_sset_count    = mlx5e_get_sset_count,
 	.get_ethtool_stats = mlx5e_get_ethtool_stats,
+	.self_test         = mlx5e_self_test,
+	.get_msglevel      = mlx5e_get_msglevel,
+	.set_msglevel      = mlx5e_set_msglevel,
 	.get_ringparam     = mlx5e_get_ringparam,
 	.set_ringparam     = mlx5e_set_ringparam,
 #ifdef HAVE_GET_SET_CHANNELS
@@ -794,19 +1002,41 @@ const struct ethtool_ops mlx5e_ethtool_ops = {
 	.set_coalesce      = mlx5e_set_coalesce,
 	.get_settings      = mlx5e_get_settings,
 	.set_settings      = mlx5e_set_settings,
-#ifdef CONFIG_COMPAT_LRO_ENABLED_IPOIB
-	.set_priv_flags    = mlx5e_set_priv_flags,
-	.get_priv_flags    = mlx5e_get_priv_flags,
+	.set_pauseparam    = mlx5e_set_pauseparam,
+	.get_pauseparam    = mlx5e_get_pauseparam,
+	.get_wol	   = mlx5e_get_wol,
+	.set_wol	   = mlx5e_set_wol,
+#ifdef HAVE_GET_SET_PRIV_FLAGS
+	.get_priv_flags	   = mlx5e_get_priv_flags,
+	.set_priv_flags	   = mlx5e_set_priv_flags,
+#endif
+#ifdef LEGACY_ETHTOOL_OPS
+#if defined(HAVE_GET_SET_FLAGS)
+	.get_flags	   = mlx5e_get_flags,
+	.set_flags	   = mlx5e_set_flags,
+#endif
+#if defined(HAVE_GET_SET_TSO)
+	.get_tso	   = mlx5e_get_tso,
+	.set_tso	   = mlx5e_set_tso,
+#endif
 #endif
 };
-
 
 #ifdef HAVE_ETHTOOL_OPS_EXT
 const struct ethtool_ops_ext mlx5e_ethtool_ops_ext = {
-	.size = sizeof(struct ethtool_ops_ext),
+	.size		   = sizeof(struct ethtool_ops_ext),
 #ifdef HAVE_GET_SET_CHANNELS_EXT
-	.get_channels = mlx5e_get_channels,
-	.set_channels = mlx5e_set_channels,
+	.get_channels	   = mlx5e_get_channels,
+	.set_channels	   = mlx5e_set_channels,
+#endif
+#if defined(HAVE_GET_SET_FLAGS_EXT)
+	.get_flags	   = mlx5e_get_flags,
+	.set_flags	   = mlx5e_set_flags,
+#endif
+#if defined(HAVE_GET_SET_TSO_EXT)
+	.get_tso	   = mlx5e_get_tso,
+	.set_tso	   = mlx5e_set_tso,
 #endif
 };
 #endif
+

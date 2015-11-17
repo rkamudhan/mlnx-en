@@ -41,6 +41,20 @@
 })
 
 #else
+#ifdef ZERO_OR_NULL_PTR
+#define kzalloc(size, flags) ({							\
+	void *__memtrack_addr = NULL;						\
+										\
+	if (memtrack_inject_error(THIS_MODULE, __FILE__, "kzalloc", __func__, __LINE__)) \
+		MEMTRACK_ERROR_INJECTION_MESSAGE(THIS_MODULE, __FILE__, __LINE__, __func__, "kzalloc");\
+	else									\
+		__memtrack_addr = kzalloc(size, flags);				\
+	if (!ZERO_OR_NULL_PTR(__memtrack_addr) && !is_non_trackable_alloc_func(__func__)) {	\
+		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), size, 0UL, 0, __FILE__, __LINE__, flags); \
+	}									\
+	__memtrack_addr;							\
+})
+#else
 #define kzalloc(size, flags) ({							\
 	void *__memtrack_addr = NULL;						\
 										\
@@ -54,6 +68,7 @@
 	__memtrack_addr;							\
 })
 
+#endif
 #endif
 
 #define kzalloc_node(size, flags, node) ({					\
@@ -73,6 +88,7 @@
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 19)
 #define kcalloc(n, size, flags) kzalloc((n)*(size), flags)
 #else
+#ifdef ZERO_OR_NULL_PTR
 #define kcalloc(n, size, flags) ({ \
 	void *__memtrack_addr = NULL;						\
 										\
@@ -80,11 +96,25 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(THIS_MODULE, __FILE__, __LINE__, __func__, "kcalloc");\
 	else									\
 		__memtrack_addr = kcalloc(n, size, flags);			\
-	if (__memtrack_addr && (size)) {					\
+	if (!ZERO_OR_NULL_PTR(__memtrack_addr) && (n)*(size)) {			\
 		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), (n)*(size), 0UL, 0, __FILE__, __LINE__, flags); \
 	}									\
 	__memtrack_addr;							\
 })
+#else
+#define kcalloc(n, size, flags) ({ \
+	void *__memtrack_addr = NULL;						\
+										\
+	if (memtrack_inject_error(THIS_MODULE, __FILE__, "kcalloc", __func__, __LINE__)) \
+		MEMTRACK_ERROR_INJECTION_MESSAGE(THIS_MODULE, __FILE__, __LINE__, __func__, "kcalloc");\
+	else									\
+		__memtrack_addr = kcalloc(n, size, flags);			\
+	if (__memtrack_addr && (n)*(size)) {					\
+		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), (n)*(size), 0UL, 0, __FILE__, __LINE__, flags); \
+	}									\
+	__memtrack_addr;							\
+})
+#endif
 #endif
 
 
@@ -294,6 +324,22 @@
 })
 #endif
 
+#ifndef memdup_user
+#define memdup_user(user_addr, size) ({						\
+	void *__memtrack_addr = NULL;						\
+										\
+	if (memtrack_inject_error(THIS_MODULE, __FILE__, "memdup_user", __func__, __LINE__)) \
+		MEMTRACK_ERROR_INJECTION_MESSAGE(THIS_MODULE, __FILE__, __LINE__, __func__, "memdup_user"); \
+	else									\
+		__memtrack_addr = memdup_user(user_addr, size);			\
+										\
+	if (__memtrack_addr) {							\
+		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), size, 0UL, 0, __FILE__, __LINE__, GFP_KERNEL); \
+	}									\
+	__memtrack_addr;							\
+})
+#endif
+
 #define kmem_cache_alloc(cache, flags) ({					\
 	void *__memtrack_addr = NULL;						\
 										\
@@ -323,6 +369,20 @@
 	kmem_cache_free(cache, __memtrack_addr);				\
 })
 
+#ifndef kasprintf
+#define kasprintf(gfp, fmt, ...) ({						\
+	void *__memtrack_addr = NULL;						\
+										\
+	if (memtrack_inject_error(THIS_MODULE, __FILE__, "kasprintf", __func__, __LINE__)) \
+		MEMTRACK_ERROR_INJECTION_MESSAGE(THIS_MODULE, __FILE__, __LINE__, __func__, "kasprintf"); \
+	else									\
+		__memtrack_addr = kasprintf(gfp, fmt, __VA_ARGS__);		\
+	if (__memtrack_addr && strncmp((char *)__memtrack_addr, "infiniband", 10)) {	\
+		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), strlen((char *)__memtrack_addr), 0UL, 0, __FILE__, __LINE__, gfp); \
+	}									\
+	__memtrack_addr;							\
+})
+#endif
 
 /* All IO-MAP handling */
 #define ioremap(phys_addr, size) ({						\

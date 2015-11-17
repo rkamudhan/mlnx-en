@@ -441,7 +441,7 @@ struct iscsi_cmd {
 	u32			tx_size;
 	/* Buffer used for various purposes */
 	void			*buf_ptr;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
+#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 	/* Used by SendTargets=[iqn.,eui.] discovery */
 	void			*text_in_ptr;
 #endif

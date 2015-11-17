@@ -3,19 +3,18 @@ Subject: [PATCH] BACKPORT: mlx4_vnic
 
 Signed-off-by: Alaa Hleihel <alaa@mellanox.com>
 ---
- drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h     |    8 ++
- .../mellanox/mlx4_vnic/vnic_data_ethtool.c         |  106 ++++++++++++++++++++
- .../net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c |   17 +++-
- .../ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c |   64 ++++++++++++-
- .../net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c |   30 ++++++-
- drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c  |    2 +
- 6 files changed, 222 insertions(+), 5 deletions(-)
+ drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h     |   8 ++
+ .../mellanox/mlx4_vnic/vnic_data_ethtool.c         | 106 +++++++++++++++++++++
+ .../net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c |  17 +++-
+ .../ethernet/mellanox/mlx4_vnic/vnic_data_main.c   |   4 +-
+ .../ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c |  68 ++++++++++++-
+ .../net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c |  30 +++++-
+ drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c  |   2 +
+ 7 files changed, 226 insertions(+), 9 deletions(-)
 
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic.h
-@@ -304,6 +304,7 @@ extern struct ib_sa_client vnic_sa_client;
+@@ -304,6 +304,7 @@ extern struct ib_sa_client vnic_sa_clien
  #ifndef _BP_NETDEV_NO_TMQ /* >= 2.6.27 */
  #define VNIC_TXQ_GET_HASH(_skb, _max)	(skb_get_queue_mapping(_skb))
  #define VNIC_TXQ_ALLOC_NETDEV(sz, nm, sp, qm) alloc_netdev_mq(sz, nm, sp, qm)
@@ -23,7 +22,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define VNIC_TXQ_SET_ACTIVE(login, num) \
              do { \
                  rtnl_lock(); \
-@@ -311,6 +312,13 @@ extern struct ib_sa_client vnic_sa_client;
+@@ -311,6 +312,13 @@ extern struct ib_sa_client vnic_sa_clien
                  rtnl_unlock(); \
                  login->real_tx_rings_num = login->ndo_tx_rings_num = num; \
              } while (0)
@@ -37,11 +36,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  #define VNIC_TXQ_GET_ACTIVE(login)	(login->real_tx_rings_num)
  #define VNIC_TXQ_GET(tx_res)		netdev_get_tx_queue(tx_res->login->dev, tx_res->index)
  #define VNIC_TXQ_STOP(tx_res) 		netif_tx_stop_queue(VNIC_TXQ_GET(tx_res))
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ethtool.c b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ethtool.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ethtool.c
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ethtool.c
-@@ -147,6 +147,91 @@ static int vnic_set_coalesce(struct net_device *dev,
+@@ -147,6 +147,91 @@ static int vnic_set_coalesce(struct net_
  	return 0;
  }
  
@@ -133,7 +130,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int vnic_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
  {
  	cmd->autoneg = AUTONEG_DISABLE;
-@@ -324,5 +409,26 @@ static struct ethtool_ops vnic_ethtool_ops = {
+@@ -324,5 +409,26 @@ static struct ethtool_ops vnic_ethtool_o
  	.get_wol = vnic_get_wol,
  	.get_ringparam = vnic_get_ringparam,
  	.set_ringparam = NULL,
@@ -160,11 +157,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  };
  
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_ib.c
-@@ -396,10 +396,13 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
+@@ -396,10 +396,13 @@ static void vnic_ib_handle_rx_wc(struct
  	ib_dma_sync_single_for_cpu(ib_device,
  				   ring->rx_info[wr_id].dma_addr[0] + IB_GRH_BYTES,
  				   MAX_HEADER_SIZE, DMA_FROM_DEVICE);
@@ -180,7 +175,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* check EoIB header signature and version */
  	eoib_hdr = (struct eoibhdr *)va;
  	if (unlikely(VNIC_EOIB_HDR_GET_SIG(eoib_hdr) != VNIC_EOIB_HDR_SIG ||
-@@ -500,7 +503,9 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
+@@ -500,7 +503,9 @@ static void vnic_ib_handle_rx_wc(struct
  #elif defined(NETIF_F_LRO)
  	if (login->dev->features & NETIF_F_LRO && checksum_ok &&
  	    eth_type == ETH_P_IP && ip_type == IPPROTO_TCP) {
@@ -190,7 +185,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		int nr_frags;
  
  		/* unmap the needed fragment and reallocate them.
-@@ -515,8 +520,10 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
+@@ -515,8 +520,10 @@ static void vnic_ib_handle_rx_wc(struct
  		frags[0].size -= page_offset;
  
  		/* processed for LRO */
@@ -201,7 +196,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		VNIC_STATS_INC(login->port_stats.lro_aggregated);
  
  		goto rx_repost;
-@@ -1360,9 +1367,15 @@ static int vnic_dma_map_tx(struct ib_device *ca, struct vnic_tx_buf *tx_req)
+@@ -1360,9 +1367,15 @@ static int vnic_dma_map_tx(struct ib_dev
  
  	for (i = 0; i < shinfo->nr_frags; ++i) {
  		skb_frag_t *frag = &shinfo->frags[i];
@@ -217,8 +212,26 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (unlikely(ib_dma_mapping_error(ca, mapping[i + off])))
  			goto partial_error;
  	}
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c
-index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_main.c
++++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_main.c
+@@ -901,7 +901,7 @@ static int _vnic_add_member_mgid(struct
+ {
+ 	struct vnic_mcast *mcaste, *mcaste_bcast;
+ 	int rc;
+-#ifndef _BP_NO_MC_LIST
++#ifndef HAVE_NETDEV_FOR_EACH_MC_ADDR
+ 	struct dev_mc_list *mclist;
+ #else
+ 	struct netdev_hw_addr *ha;
+@@ -949,7 +949,7 @@ static int _vnic_add_member_mgid(struct
+ 
+ 	/* hold the tx lock so set_multicast_list() won't change mc_list */
+ 	netif_tx_lock_bh(login->dev);
+-#ifndef _BP_NO_MC_LIST
++#ifndef HAVE_NETDEV_FOR_EACH_MC_ADDR
+ 	for (mclist = login->dev->mc_list; mclist; mclist = mclist->next) {
+ 		u8* mmac = mclist->dmi_addr;
+ #else
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_netdev.c
 @@ -34,7 +34,24 @@
@@ -246,7 +259,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static int mlx4_vnic_vlan_rx_add_vid(struct net_device *dev, unsigned short vid)
  {
  	struct vnic_login *login = vnic_netdev_priv(dev);
-@@ -50,6 +67,21 @@ static int mlx4_vnic_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid
+@@ -50,6 +67,21 @@ static int mlx4_vnic_vlan_rx_kill_vid(st
  	vnic_dbg_data(login->name, "Kill VID:%d was called\n", vid);
  	return 0;
  }
@@ -268,7 +281,25 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  void vnic_carrier_update(struct vnic_login *login)
  {
-@@ -808,7 +840,16 @@ static void vnic_tx_timeout(struct net_device *dev)
+@@ -349,7 +381,7 @@ static void vnic_mcast_reattach(struct w
+ 	struct vnic_gw_info *lag_member;
+ 	struct vnic_login *login;
+ 	struct net_device *dev;
+-#ifndef _BP_NO_MC_LIST
++#ifndef HAVE_NETDEV_FOR_EACH_MC_ADDR
+ 	struct dev_mc_list *mclist;
+ #else
+ 	struct netdev_hw_addr *ha;
+@@ -415,7 +447,7 @@ static void vnic_mcast_reattach(struct w
+ 
+ 	/* hold the tx lock so set_multicast_list() won't change mc_list */
+ 	netif_tx_lock_bh(dev);
+-#ifndef _BP_NO_MC_LIST
++#ifndef HAVE_NETDEV_FOR_EACH_MC_ADDR
+ 	for (mclist = login->dev->mc_list; mclist; mclist = mclist->next) {
+ 		u8* mmac = mclist->dmi_addr;
+ #else
+@@ -808,7 +840,16 @@ static void vnic_tx_timeout(struct net_d
  }
  
  #ifndef _BP_NETDEV_NO_TMQ
@@ -285,7 +316,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	/* Notes:
  	 * - In kernel 2.6.32 the skb->mac_header 0x1a is not set when
-@@ -834,7 +875,11 @@ static struct net_device_ops vnic_netdev_ops = {
+@@ -834,7 +875,11 @@ static struct net_device_ops vnic_netdev
  	.ndo_stop = vnic_stop,
  	.ndo_start_xmit = vnic_tx,
  	.ndo_get_stats = vnic_get_stats,
@@ -298,7 +329,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	.ndo_change_mtu = vnic_change_mtu,
  	.ndo_tx_timeout = vnic_tx_timeout,
  	.ndo_set_mac_address = vnic_set_mac,
-@@ -884,7 +929,11 @@ static int vnic_get_frag_header(struct skb_frag_struct *frags, void **mac_hdr,
+@@ -884,7 +929,11 @@ static int vnic_get_frag_header(struct s
  				u64 *hdr_flags, void *priv)
  {
  	struct iphdr *iph;
@@ -310,7 +341,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	*ip_hdr = iph = (struct iphdr *)(*mac_hdr + ETH_HLEN);
  	*tcpudp_hdr = (struct tcphdr *)(iph + (iph->ihl << 2));
  	*hdr_flags = LRO_IPV4 | LRO_TCP;
-@@ -1018,11 +1067,22 @@ struct net_device *vnic_alloc_netdev(struct vnic_port *port)
+@@ -1018,11 +1067,22 @@ struct net_device *vnic_alloc_netdev(str
  
  	vnic_set_ethtool_ops(dev);
  	/* init ethtool */
@@ -334,8 +365,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  	/* init NAPI (must be before LRO init) */
  	login->napi_num = login->rx_rings_num;
  	for (i = 0; i < login->napi_num; ++i) {
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_data_rx.c
 @@ -33,6 +33,12 @@
@@ -351,7 +380,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  static inline void free_single_frag(struct vnic_rx_ring *ring, int e,int i)
  {
  		ib_dma_unmap_single(ring->port->dev->ca,
-@@ -40,7 +46,11 @@ static inline void free_single_frag(struct vnic_rx_ring *ring, int e,int i)
+@@ -40,7 +46,11 @@ static inline void free_single_frag(stru
  			ring->frag_info[i].frag_size,
  			PCI_DMA_FROMDEVICE);
  		ring->rx_info[e].dma_addr[i] = 0;
@@ -372,7 +401,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			__netif_schedule(txq->qdisc);
  	}
  	spin_unlock(&dev->tx_global_lock);
-@@ -283,20 +293,34 @@ static int vnic_alloc_frag(struct vnic_rx_ring *ring,
+@@ -283,20 +293,34 @@ static int vnic_alloc_frag(struct vnic_r
  			   ring->need_refill = 1; */
  			return -ENOMEM;
  		}
@@ -419,11 +448,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  	}
  
  	return 0;
-diff --git a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c
 +++ b/drivers/net/ethernet/mellanox/mlx4_vnic/vnic_qp.c
-@@ -603,7 +603,9 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
+@@ -604,7 +604,9 @@ static int create_qp_common(struct mlx4_
  	spin_lock_init(&qp->rq.lock);
  	INIT_LIST_HEAD(&qp->gid_list);
  	INIT_LIST_HEAD(&qp->steering_rules);

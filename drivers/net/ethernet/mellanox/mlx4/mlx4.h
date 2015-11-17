@@ -55,8 +55,12 @@
 
 #define DRV_NAME	"mlx4_core"
 #define PFX		DRV_NAME ": "
-#define DRV_VERSION	"3.0-1.0.1"
-#define DRV_RELDATE	"Feb, 2014"
+#define DRV_VERSION	"3.1-1.0.4"
+#define DRV_RELDATE	"30 Sep 2015"
+
+#define DRV_STACK_NAME		"Linux-MLNX_EN"
+#define DRV_STACK_VERSION	"3.1-1.0.4"
+#define DRV_NAME_FOR_FW         DRV_STACK_NAME","DRV_STACK_VERSION
 
 #define MLX4_FS_NUM_OF_L2_ADDR		8
 #define MLX4_FS_MGM_LOG_ENTRY_SIZE	7
@@ -240,6 +244,7 @@ extern int mlx4_log_num_mgm_entry_size;
 extern int log_mtts_per_seg;
 extern int mlx4_internal_err_reset;
 extern int ingress_parser_mode;
+extern int mlx4_blck_lb;
 
 #define MLX4_MAX_NUM_SLAVES	(min(MLX4_MAX_NUM_PF + MLX4_MAX_NUM_VF, \
 				     MLX4_MFUNC_MAX))
@@ -796,6 +801,9 @@ struct mlx4_set_port_general_context {
 	u8 pprx;
 	u8 pfcrx;
 	u16 reserved4;
+	u32 reserved5;
+	u8 phv_en;
+	u8 reserved6[3];
 };
 
 struct mlx4_set_port_rqp_calc_context {
@@ -1397,6 +1405,8 @@ void mlx4_vf_immed_vlan_work_handler(struct work_struct *_work);
 
 void mlx4_init_quotas(struct mlx4_dev *dev);
 
+/* for VFs, replace zero MACs with randomly-generated MACs at driver start */
+void mlx4_replace_zero_macs(struct mlx4_dev *dev);
 int mlx4_get_slave_num_gids(struct mlx4_dev *dev, int slave, int port);
 int mlx4_get_slave_indx(struct mlx4_dev *dev, int vf);
 /* Returns the VF index of slave */

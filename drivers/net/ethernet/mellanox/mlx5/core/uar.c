@@ -37,11 +37,6 @@
 #include <linux/mlx5/cmd.h>
 #include "mlx5_core.h"
 
-enum {
-	NUM_DRIVER_UARS		= 4,
-	NUM_LOW_LAT_UUARS	= 4,
-};
-
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn)
 {
 	u32 in[MLX5_ST_SZ_DW(alloc_uar_in)];

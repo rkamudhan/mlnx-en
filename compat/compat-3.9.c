@@ -23,6 +23,7 @@
 #include <linux/if_pppox.h>
 #include <linux/ppp_defs.h>
 #include <net/flow_keys.h>
+#include <linux/pci.h>
 
 #ifdef CONFIG_XPS
 static u32 hashrnd __read_mostly;
@@ -147,3 +148,28 @@ int netif_set_xps_queue(struct net_device *dev, struct cpumask *msk, u16 idx)
 }
 EXPORT_SYMBOL(netif_set_xps_queue);
 #endif /* CONFIG_COMPAT_NETIF_HAS_SET_XPS_QUEUE */
+
+#ifndef PCI_SRIOV_TOTAL_VF
+#define PCI_SRIOV_TOTAL_VF	0x0e
+#endif
+
+#ifndef HAVE_PCI_SRIOV_GET_TOTALVFS
+int pci_sriov_get_totalvfs(struct pci_dev *pdev)
+{
+	int pos;
+	u16 total_vfs;
+
+	#ifndef HAVE_PCI_PHYSFN
+	if (!pdev->is_physfn)
+		return 0;
+	#endif
+
+	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
+	if (!pos)
+		return 0;
+	pci_read_config_word(pdev, pos + PCI_SRIOV_TOTAL_VF, &total_vfs);
+
+	return total_vfs;
+}
+EXPORT_SYMBOL_GPL(pci_sriov_get_totalvfs);
+#endif

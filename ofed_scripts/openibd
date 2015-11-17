@@ -238,11 +238,24 @@ else
         NETWORK_CONF_DIR="/etc/sysconfig/network-scripts"
     elif [ -d /etc/sysconfig/network ]; then
         NETWORK_CONF_DIR="/etc/sysconfig/network"
+    elif [ -d /etc/sysconfig/network ]; then
+        NETWORK_CONF_DIR="/etc/sysconfig/network"
+    elif [ -f /etc/network/interfaces ]; then
+        NETWORK_CONF_DIR="/etc/network"
     else
         echo_failure "You system is not supported for IPoIB configuration"
         echo "Try to load driver manually using configuration files from $WD directory"
         exit 1
     fi
+fi
+
+# set bootid files for all interfaces
+if [ "X$RUNMODE" == "Xmanual" ]; then
+    curr_bootid=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null | sed -e 's/-//g')
+    for i in $(grep -wE "NAME|DEVICE" ${NETWORK_CONF_DIR}/ifcfg-* 2>/dev/null | cut -d'=' -f'2' | tr -d "\"|\'")
+    do
+        echo $curr_bootid > /var/run/mlx_ifc-${i}.bootid 2>/dev/null
+    done
 fi
 
 # Define kernel version prefix
@@ -335,6 +348,11 @@ get_mlx_en_interfaces()
     for ethpath in /sys/class/net/*
     do
         if (grep 0x15b3 ${ethpath}/device/vendor > /dev/null 2>&1); then
+            if [ ! -z "$1" ]; then
+                if [ "$(basename `readlink -f ${ethpath}/device/driver/module`)" != "$1" ]; then
+                    continue
+                fi
+            fi
             mlx_en_interfaces="$mlx_en_interfaces ${ethpath##*/}"
         fi
     done
@@ -421,7 +439,7 @@ xe_rebuild_bond()
 
 xe_bond_recover()
 {
-    get_mlx_en_interfaces
+    get_mlx_en_interfaces $1
     for bond_uuid in `$XE bond-list 2> /dev/null | grep "^uuid" | awk '{print $NF}'`
     do
         for i in $mlx_en_interfaces
@@ -464,7 +482,7 @@ load_module()
         filename=`readlink -f $filename`
     fi
 
-    rpm_name=`/bin/rpm -qf $filename --queryformat "[%{NAME}]" 2> /dev/null`
+    rpm_name=`rpm -qf $filename --queryformat "[%{NAME}]" 2> /dev/null`
     if [ $? -ne 0 ] && [ $FORCE -eq 0 ]; then
             echo_failure "Module $module does not belong to MLNX_OFED, skipping..."
             log_msg "ERROR: Module $module does not belong to MLNX_OFED, skipping..."
@@ -806,6 +824,24 @@ is_active_vf()
     fi
 }
 
+run_fw_updater()
+{
+    if [ ! -x /opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl ]; then
+        log_msg "fw_updater: /opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl doesn't exist!"
+        return
+    fi
+    sleep 5
+    log_msg "fw_updater: running /opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl ..."
+    /opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl >/dev/null 2>&1
+    local FWRC=$(grep EXIT_STATUS: /tmp/mlnx_fw_update.log 2>/dev/null | cut -d":" -f"2" | sed -r -e 's/\s//g')
+    log_msg "fw_updater: RC $FWRC , log file: /tmp/mlnx_fw_update.log"
+    if (grep -qE "Updating FW.*Done" /tmp/mlnx_fw_update.log 2>/dev/null); then
+        log_msg "fw_updater: Firmware was updated. Please reboot your system for the changes to take effect."
+    else
+        log_msg "fw_updater: Didn't detect new devices with old firmware."
+    fi
+}
+
 start()
 {
     local RC=0
@@ -816,53 +852,48 @@ start()
     fi
 
     # W/A: inbox drivers are loaded at boot instead of new ones
-    local mlxko=$(/sbin/lsmod 2>/dev/null | grep '^mlx' | head -1 | awk '{print $NR}')
-    if [ "X$mlxko" != "X" ]; then
-        local loaded_srcver=$(/bin/cat /sys/module/$mlxko/srcversion 2>/dev/null)
-        local curr_srcver=$(/sbin/modinfo $mlxko 2>/dev/null | grep srcversion | awk '{print $NF}')
+    local loaded_modules=$(/sbin/lsmod 2>/dev/null | grep -E '^be2net|^cxgb|^mlx|^iw_nes|^iw_cxgb|^ib_qib|^ib_mthca|^ocrdma|^ib_ipoib|^ib_srp|^ib_iser|^ib_uverbs|^ib_addr|^ib_mad|^ib_sa|^iw_cm|^ib_core|^ib_ucm|^ib_cm|^rdma_ucm|^ib_umad|^rdma_cm|^compat' | awk '{print $1}')
+    for loaded_module in $loaded_modules
+    do
+        local loaded_srcver=$(/bin/cat /sys/module/$loaded_module/srcversion 2>/dev/null)
+        local curr_srcver=$(/sbin/modinfo $loaded_module 2>/dev/null | grep srcversion | awk '{print $NF}')
         if [ "X$loaded_srcver" != "X$curr_srcver" ]; then
-            log_msg "start(): Detected loaded old version of module '$mlxko', calling stop..."
+            log_msg "start(): Detected loaded old version of module '$loaded_module', calling stop..."
             stop
+            break
         fi
-    fi
+    done
 
     # W/A: modules loaded from initrd without taking new params from /etc/modprobe.d/
-    local conf_files=$(grep -rE "options.*mlx" /etc/modprobe.d/*.conf 2>/dev/null | grep -v ":#" | cut -d":" -f"1" | uniq)
     local goFlag=1
-    if [ "X$conf_files" != "X" ]; then
-        for file in $conf_files
+    OIFS="${IFS}"
+    NIFS=$'\n'
+    IFS="${NIFS}"
+    for line in $(grep -rE "options.*mlx" /etc/modprobe.d/*.conf 2>/dev/null | grep -v ":#" | cut -d":" -f"2" | uniq)
+    do
+        IFS="${OIFS}"
+        local curr_mod=$(echo $line | sed -r -e 's/.*options //g' | awk '{print $NR}')
+        if ! is_module $curr_mod; then
+            continue
+        fi
+        for item in $(echo $line | sed -r -e "s/.*options\s*${curr_mod}//g")
         do
-            while read line && [ $goFlag -eq 1 ]
-            do
-                # skip commented lines
-                case $line in
-                \#*)
-                continue
-                ;;
-                esac
-
-                local curr_mod=$(echo $line | sed -r -e 's/.*options //g' | awk '{print $NR}')
-                if ! is_module $curr_mod; then
-                    continue
-                fi
-                for item in $(echo $line | sed -r -e "s/.*options\s*${curr_mod}//g")
-                do
-                    local param=${item%=*}
-                    local conf_value=${item##*=}
-                    local real_value=$(cat /sys/module/${curr_mod}/parameters/${param} 2>/dev/null)
-                    if [ "X$conf_value" != "X$real_value" ]; then
-                        log_msg "start(): Detected '$curr_mod' loaded with '$param=$real_value' instead of '$param=$conf_value' as configured in '$file', calling stop..."
-                        goFlag=0
-                        stop
-                        break
-                    fi
-                done
-            done < $file
-            if [ $goFlag -ne 1 ]; then
+            local param=${item%=*}
+            local conf_value=${item##*=}
+            local real_value=$(cat /sys/module/${curr_mod}/parameters/${param} 2>/dev/null)
+            if [ "X$conf_value" != "X$real_value" ]; then
+                log_msg "start(): Detected '$curr_mod' loaded with '$param=$real_value' instead of '$param=$conf_value' as configured in '$file', calling stop..."
+                goFlag=0
+                stop
                 break
             fi
         done
-    fi
+        if [ $goFlag -ne 1 ]; then
+            break
+        fi
+        IFS="${NIFS}"
+    done
+    IFS="${OIFS}"
 
     if is_ivyb; then
         # Clear SB registers on IvyB machines
@@ -925,14 +956,14 @@ start()
         else
             if [ -x $XE ]; then
                 xe_remove_side_interfaces
-                get_mlx_en_interfaces
+                get_mlx_en_interfaces mlx4_core
                 if [ -n "$mlx_en_interfaces" ]; then
                     for i in $mlx_en_interfaces
                     do
                          xe_replug_pif `xe_get_uuid $i`
                     done
                 fi
-                xe_bond_recover
+                xe_bond_recover mlx4_core
             fi
         fi
         RC=$[ $RC + $my_rc ]
@@ -979,6 +1010,18 @@ start()
         my_rc=$?
         if [ $my_rc -ne 0 ]; then
                 echo_failure $"Loading Mellanox MLX5 HCA driver: "
+        else
+            if [ -x $XE ]; then
+                xe_remove_side_interfaces
+                get_mlx_en_interfaces mlx5_core
+                if [ -n "$mlx_en_interfaces" ]; then
+                    for i in $mlx_en_interfaces
+                    do
+                        xe_replug_pif `xe_get_uuid $i`
+                    done
+                fi
+                xe_bond_recover mlx5_core
+            fi
         fi
         load_module mlx5_ib
         my_rc=$?
@@ -1237,6 +1280,10 @@ start()
     # W/A for ib_ipoib getting loaded in the middle of openibd stop
     if (grep -q "^#alias netdev-ib" /etc/modprobe.d/ib_ipoib.conf); then
             sed -r -i -e "s/(^#)(alias netdev-ib.*)/\2/" /etc/modprobe.d/ib_ipoib.conf
+    fi
+
+    if [[ "X$RUN_FW_UPDATER_ONBOOT" == "Xyes" && "X$RUNMODE" == "Xauto" ]]; then
+            run_fw_updater >/dev/null 2>&1 &
     fi
 
     return $RC
@@ -1606,7 +1653,17 @@ status()
        get_mlx_en_interfaces
        if [ -n "$mlx_en_interfaces" ]; then
            echo $"Configured Mellanox EN devices:"
-           echo $mlx_en_interfaces
+           for iface in $mlx_en_interfaces
+           do
+                case $iface in
+                        ib*)
+                        continue
+                        ;;
+                        *)
+                        echo $iface
+                        ;;
+                esac
+           done
            echo
            echo $"Currently active Mellanox devices:"
 

@@ -18,6 +18,14 @@ if [ ! -f $CONFIG ]; then
     exit 0
 fi
 
+OS_IS_BOOTING=0
+last_bootID=$(cat /var/run/mlx_ifc-${i}.bootid 2>/dev/null)
+bootID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null | sed -e 's/-//g')
+echo $bootID > /var/run/mlx_ifc-${i}.bootid
+if [[ "X$last_bootID" == "X" || "X$last_bootID" != "X$bootID" ]]; then
+    OS_IS_BOOTING=1
+fi
+
 . $CONFIG
 IPOIB_MTU=${IPOIB_MTU:-65520}
 
@@ -121,8 +129,6 @@ bring_up()
     local i=$1
     shift
 
-    /sbin/ifup ${i} >/dev/null 2>&1 &
-
     local IFCFG_FILE="${NETWORK_CONF_DIR}/ifcfg-${i}"
     # W/A for conf files created with nmcli
     if [ ! -e "$IFCFG_FILE" ]; then
@@ -131,7 +137,13 @@ bring_up()
 
     if [[ -e ${IFCFG_FILE} ]]; then
         . ${IFCFG_FILE}
+        if [ "${ONBOOT}" = "no" -o "${ONBOOT}" = "NO" ] && [ $OS_IS_BOOTING -eq 1 ]; then
+            log_msg "interface $i has ONBOOT=no, skipping."
+            return 5
+        fi
     fi
+
+    /sbin/ifup ${i} >/dev/null 2>&1 &
 
     # Take CM mode settings from ifcfg file if set,
     # otherwise, take it from openib.conf
@@ -193,10 +205,12 @@ if [[ ! -e ${NETWORK_CONF_DIR}/ifcfg-${i} ]] &&
       !(grep -Eq "=\s*\"*${i}\"*\s*\$" ${NETWORK_CONF_DIR}/* 2>/dev/null); then
     log_msg "No configuration found for ${i}"
 else
-    if [ $RC -eq 0 ]; then
-        log_msg "Bringing up interface $i: PASSED"
-    else
-        log_msg "Bringing up interface $i: FAILED"
+    if [ $RC -ne 5 ]; then
+        if [ $RC -eq 0 ]; then
+            log_msg "Bringing up interface $i: PASSED"
+        else
+            log_msg "Bringing up interface $i: FAILED"
+        fi
     fi
 fi
 
@@ -241,6 +255,9 @@ do
 
     bring_up $ch_i
     RC=$?
+    if [ $RC -eq 5 ]; then
+        continue
+    fi
     if [ $RC -eq 0 ]; then
             log_msg "Bringing up interface $ch_i: PASSED"
     else
@@ -271,6 +288,9 @@ do
 
     bring_up $ch_i
     RC=$?
+    if [ $RC -eq 5 ]; then
+        continue
+    fi
     if [ $RC -eq 0 ]; then
             log_msg "Bringing up interface $ch_i: PASSED"
     else

@@ -48,6 +48,12 @@
 #include <linux/clocksource.h>
 #endif
 
+#define DEFAULT_UAR_PAGE_SHIFT       12
+#define DEFAULT_UAR_PAGE_SIZE         (1 << DEFAULT_UAR_PAGE_SHIFT)
+#define DEFAULT_UAR_PAGE_MASK       (~(DEFAULT_UAR_PAGE_SIZE - 1))
+#define NUM_RESERVED_UAR                 (128 >> (PAGE_SHIFT - DEFAULT_UAR_PAGE_SHIFT))
+#define mlx4_to_hw_uar_index(index)   (index << (PAGE_SHIFT - DEFAULT_UAR_PAGE_SHIFT))
+
 #define MAX_MSIX_P_PORT		17
 #define MAX_MSIX		1024
 #define MIN_MSIX_P_PORT		5
@@ -67,6 +73,28 @@
 #define MLX4_GID_LEN		16
 #define MLX4_ROCE_MAX_GIDS	128
 #define MLX4_ROCE_PF_GIDS	16
+
+#if defined(__i386__) || defined(__x86_64__)
+static inline bool mlx4_arch_bf_support(void)
+{
+	pgprot_t prot = __pgprot(0);
+
+	if (pgprot_val(pgprot_writecombine(prot)) == pgprot_val(pgprot_noncached(prot)))
+		return false;
+
+	return true;
+}
+#elif defined(CONFIG_PPC64)
+static inline bool mlx4_arch_bf_support(void)
+{
+	return true;
+}
+#else
+static inline bool mlx4_arch_bf_support(void)
+{
+	return false;
+}
+#endif
 
 /*
  * MLX4_RX_CSUM_MODE_VAL_NON_TCP_UDP -
@@ -98,7 +126,9 @@ enum {
 	MLX4_FLAG_SRIOV		= 1 << 4,
 	MLX4_FLAG_OLD_REG_MAC	= 1 << 6,
 	MLX4_FLAG_DEV_NUM_STR	= 1 << 5,
-	MLX4_FLAG_BONDED	= 1 << 7
+	MLX4_FLAG_BONDED	= 1 << 7,
+	MLX4_FLAG_SECURE_HOST	= 1 << 8,
+	MLX4_FLAG_RANDOM_MAC	= 1 << 9,
 };
 
 enum {
@@ -265,6 +295,10 @@ enum {
 #ifdef CONFIG_INFINIBAND_WQE_FORMAT
 	MLX4_DEV_CAP_FLAG2_WQE_FORMAT		= 1ULL << 38,
 #endif
+	MLX4_DEV_CAP_FLAG2_PHV_EN		= 1ULL <<  39,
+	MLX4_DEV_CAP_FLAG2_SKIP_OUTER_VLAN	= 1ULL <<  40,
+	MLX4_DEV_CAP_FLAG2_SW_CQ_INIT           = 1ULL << 41,
+	MLX4_DEV_CAP_FLAG2_SL_TO_VL_CHANGE_EVENT = 1ULL << 42,
 };
 
 enum {
@@ -506,6 +540,7 @@ enum {
 	MLX4_DEV_PMC_SUBTYPE_GUID_INFO	 = 0x14,
 	MLX4_DEV_PMC_SUBTYPE_PORT_INFO	 = 0x15,
 	MLX4_DEV_PMC_SUBTYPE_PKEY_TABLE	 = 0x16,
+	MLX4_DEV_PMC_SUBTYPE_SL_TO_VL_MAP = 0x17,
 };
 
 /* Port mgmt change event handling */
@@ -515,6 +550,11 @@ enum {
 	MLX4_EQ_PORT_INFO_LID_CHANGE_MASK		= 1 << 2,
 	MLX4_EQ_PORT_INFO_CLIENT_REREG_MASK		= 1 << 3,
 	MLX4_EQ_PORT_INFO_MSTR_SM_SL_CHANGE_MASK	= 1 << 4,
+};
+
+union sl2vl_tbl_to_u64 {
+	u8	sl8[8];
+	u64	sl64;
 };
 
 enum {
@@ -713,6 +753,7 @@ struct mlx4_caps {
 	int			tunnel_offload_mode;
 	u8                      cq_overrun;
 	u8			rx_checksum_flags_port[MLX4_MAX_PORTS + 1];
+	u8			phv_bit[MLX4_MAX_PORTS + 1];
 	u8			alloc_res_qp_mask;
 	u32			dmfs_high_rate_qpn_base;
 	u32			dmfs_high_rate_qpn_range;
@@ -1090,6 +1131,9 @@ struct mlx4_eqe {
 					__be32 block_ptr;
 					__be32 tbl_entries_mask;
 				} __packed tbl_change_info;
+				struct {
+					u8 sl2vl_table[8];
+				} __packed sl2vl_tbl_change_info;
 			} params;
 		} __packed port_mgmt_change;
 		struct {
@@ -1145,13 +1189,16 @@ struct mlx4_mad_ifc {
 	for ((port) = 1; (port) <= (dev)->caps.num_ports; (port)++)	  \
 		if (((dev)->caps.port_mask[port] != MLX4_PORT_TYPE_IB))
 
-#define mlx4_foreach_ib_transport_port(port, dev)                         \
-	for ((port) = 1; (port) <= (dev)->caps.num_ports; (port)++)	  \
-		if (((dev)->caps.port_mask[port] == MLX4_PORT_TYPE_IB) || \
-			((dev)->caps.flags & MLX4_DEV_CAP_FLAG_IBOE) || \
+#define mlx4_is_roce_dev(dev)					\
+			(((dev)->caps.flags & MLX4_DEV_CAP_FLAG_IBOE) || \
 			((dev)->caps.flags & MLX4_DEV_CAP_FLAG2_ROCE_V1_V2) || \
 			((dev)->caps.flags & MLX4_DEV_CAP_FLAG_R_ROCE) || \
 			((dev)->caps.flags2 & MLX4_DEV_CAP_FLAG2_ROCEV2))
+
+#define mlx4_foreach_ib_transport_port(port, dev)                         \
+	for ((port) = 1; (port) <= (dev)->caps.num_ports; (port)++)	  \
+		if (((dev)->caps.port_mask[port] == MLX4_PORT_TYPE_IB) || \
+		    mlx4_is_roce_dev(dev))
 
 #define MLX4_INVALID_SLAVE_ID	0xFF
 
@@ -1259,7 +1306,8 @@ void mlx4_free_hwq_res(struct mlx4_dev *mdev, struct mlx4_hwq_resources *wqres,
 
 int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 		  struct mlx4_uar *uar, u64 db_rec, struct mlx4_cq *cq,
-		  unsigned vector, int collapsed, int timestamp_en);
+		  unsigned vector, int collapsed, int timestamp_en,
+		  void *buf_addr, bool user_cq);
 void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq);
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
 			  int *base, u8 flags);
@@ -1526,6 +1574,8 @@ int mlx4_SET_PORT_BEACON(struct mlx4_dev *dev, u8 port, u16 time);
 int mlx4_SET_PORT_fcs_check(struct mlx4_dev *dev, u8 port,
 			    u8 ignore_fcs_value);
 int mlx4_SET_PORT_VXLAN(struct mlx4_dev *dev, u8 port, u8 steering, int enable);
+int set_phv_bit(struct mlx4_dev *dev, u8 port, int new_val);
+int get_phv_bit(struct mlx4_dev *dev, u8 port, int *phv);
 int mlx4_find_cached_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *idx);
 int mlx4_find_cached_vlan(struct mlx4_dev *dev, u8 port, u16 vid, int *idx);
 int mlx4_register_vlan(struct mlx4_dev *dev, u8 port, u16 vlan, int *index);

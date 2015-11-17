@@ -1,7 +1,7 @@
 [Unit]
 Description=mlnx-en.d - configure Mellanox devices
 Documentation=file:/etc/mlnx-en.conf
-After=wickedd.service
+After=wickedd.service local-fs.target
 Before=network.target remote-fs-pre.target
 RefuseManualStop=false
 DefaultDependencies=false

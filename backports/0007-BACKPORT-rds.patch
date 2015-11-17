@@ -3,31 +3,44 @@ Subject: [PATCH] BACKPORT: rds
 
 Signed-off-by: Alaa Hleihel <alaa@mellanox.com>
 ---
- net/rds/bind.c       |    7 ++++
- net/rds/connection.c |   34 ++++++++++++++++++
- net/rds/ib.h         |    5 +++
- net/rds/ib_rdma.c    |    4 ++
- net/rds/ib_recv.c    |   80 +++++++++++++++++++++++++++++++++++++++++
- net/rds/ib_sysctl.c  |   22 +++++++++++
- net/rds/info.c       |   12 ++++++
- net/rds/iw.h         |    5 +++
- net/rds/iw_recv.c    |   45 +++++++++++++++++++++++-
- net/rds/iw_sysctl.c  |   22 +++++++++++
- net/rds/message.c    |   96 +++++++++++++++++++++++++++++++++++++++++++++++++-
- net/rds/rds.h        |   25 +++++++++++++
- net/rds/recv.c       |   14 +++++++
- net/rds/send.c       |    8 ++++
- net/rds/sysctl.c     |   21 +++++++++++
- net/rds/tcp.h        |   13 +++++++
- net/rds/tcp_listen.c |   19 ++++++++++
- net/rds/tcp_recv.c   |   59 ++++++++++++++++++++++++++++++-
- 18 files changed, 488 insertions(+), 3 deletions(-)
+ net/rds/af_rds.c     |  4 +++
+ net/rds/bind.c       |  7 ++++
+ net/rds/connection.c | 34 +++++++++++++++++++
+ net/rds/ib.h         |  5 +++
+ net/rds/ib_rdma.c    |  4 +++
+ net/rds/ib_recv.c    | 80 +++++++++++++++++++++++++++++++++++++++++++
+ net/rds/ib_sysctl.c  | 22 ++++++++++++
+ net/rds/info.c       | 12 +++++++
+ net/rds/iw.h         |  5 +++
+ net/rds/iw_recv.c    | 45 +++++++++++++++++++++++-
+ net/rds/iw_sysctl.c  | 22 ++++++++++++
+ net/rds/message.c    | 96 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ net/rds/rds.h        | 25 ++++++++++++++
+ net/rds/recv.c       | 14 ++++++++
+ net/rds/send.c       |  8 +++++
+ net/rds/sysctl.c     | 21 ++++++++++++
+ net/rds/tcp.h        | 13 +++++++
+ net/rds/tcp_listen.c | 19 +++++++++++
+ net/rds/tcp_recv.c   | 59 +++++++++++++++++++++++++++++++-
+ 19 files changed, 492 insertions(+), 3 deletions(-)
 
-diff --git a/net/rds/bind.c b/net/rds/bind.c
-index xxxxxxx..xxxxxxx xxxxxx
+--- a/net/rds/af_rds.c
++++ b/net/rds/af_rds.c
+@@ -440,7 +440,11 @@ static int rds_create(struct net *net, s
+ 	if (sock->type != SOCK_SEQPACKET || protocol)
+ 		return -ESOCKTNOSUPPORT;
+ 
++#ifdef HAVE_SK_ALLOC_5_PARAMS
++	sk = sk_alloc(net, AF_RDS, GFP_ATOMIC, &rds_proto, kern);
++#else
+ 	sk = sk_alloc(net, AF_RDS, GFP_ATOMIC, &rds_proto);
++#endif
+ 	if (!sk)
+ 		return -ENOMEM;
+ 
 --- a/net/rds/bind.c
 +++ b/net/rds/bind.c
-@@ -52,12 +52,19 @@ static struct rds_sock *rds_bind_lookup(__be32 addr, __be16 port,
+@@ -52,12 +52,19 @@ static struct rds_sock *rds_bind_lookup(
  					struct rds_sock *insert)
  {
  	struct rds_sock *rs;
@@ -47,8 +60,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  		cmp = ((u64)be32_to_cpu(rs->rs_bound_addr) << 32) |
  		      be16_to_cpu(rs->rs_bound_port);
  
-diff --git a/net/rds/connection.c b/net/rds/connection.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/connection.c
 +++ b/net/rds/connection.c
 @@ -51,16 +51,31 @@ static struct kmem_cache *rds_conn_slab;
@@ -83,7 +94,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
  }
  
-@@ -75,8 +90,13 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
+@@ -75,8 +90,13 @@ static struct rds_connection *rds_conn_l
  					      struct rds_transport *trans)
  {
  	struct rds_connection *conn, *ret = NULL;
@@ -97,7 +108,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (conn->c_faddr == faddr && conn->c_laddr == laddr &&
  				conn->c_trans == trans) {
  			ret = conn;
-@@ -381,6 +401,9 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
+@@ -381,6 +401,9 @@ static void rds_conn_message_info(struct
  				  int want_send)
  {
  	struct hlist_head *head;
@@ -107,7 +118,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct list_head *list;
  	struct rds_connection *conn;
  	struct rds_message *rm;
-@@ -394,7 +417,11 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
+@@ -394,7 +417,11 @@ static void rds_conn_message_info(struct
  
  	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
  	     i++, head++) {
@@ -119,7 +130,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  			if (want_send)
  				list = &conn->c_send_queue;
  			else
-@@ -443,6 +470,9 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
+@@ -443,6 +470,9 @@ void rds_for_each_conn_info(struct socke
  {
  	uint64_t buffer[(item_len + 7) / 8];
  	struct hlist_head *head;
@@ -129,7 +140,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct rds_connection *conn;
  	size_t i;
  
-@@ -453,7 +483,11 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
+@@ -453,7 +483,11 @@ void rds_for_each_conn_info(struct socke
  
  	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
  	     i++, head++) {
@@ -141,11 +152,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  			/* XXX no c_lock usage.. */
  			if (!visitor(conn, buffer))
-diff --git a/net/rds/ib.h b/net/rds/ib.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/ib.h
 +++ b/net/rds/ib.h
-@@ -316,7 +316,12 @@ int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
+@@ -316,7 +316,12 @@ int rds_ib_recv_alloc_caches(struct rds_
  void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
  void rds_ib_recv_refill(struct rds_connection *conn, int prefill);
  void rds_ib_inc_free(struct rds_incoming *inc);
@@ -158,11 +167,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_ib_recv_cq_comp_handler(struct ib_cq *cq, void *context);
  void rds_ib_recv_tasklet_fn(unsigned long data);
  void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
-diff --git a/net/rds/ib_rdma.c b/net/rds/ib_rdma.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/ib_rdma.c
 +++ b/net/rds/ib_rdma.c
-@@ -267,7 +267,11 @@ static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
+@@ -267,7 +267,11 @@ static inline struct rds_ib_mr *rds_ib_r
  	unsigned long *flag;
  
  	preempt_disable();
@@ -174,11 +181,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  	set_bit(CLEAN_LIST_BUSY_BIT, flag);
  	ret = llist_del_first(&pool->clean_list);
  	if (ret)
-diff --git a/net/rds/ib_recv.c b/net/rds/ib_recv.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/ib_recv.c
 +++ b/net/rds/ib_recv.c
-@@ -421,20 +421,38 @@ static void rds_ib_recv_cache_put(struct list_head *new_item,
+@@ -421,20 +421,38 @@ static void rds_ib_recv_cache_put(struct
  				 struct rds_ib_refill_cache *cache)
  {
  	unsigned long flags;
@@ -217,7 +222,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		goto end;
  
  	/*
-@@ -446,13 +464,23 @@ static void rds_ib_recv_cache_put(struct list_head *new_item,
+@@ -446,13 +464,23 @@ static void rds_ib_recv_cache_put(struct
  	do {
  		old = xchg(&cache->xfer, NULL);
  		if (old)
@@ -241,7 +246,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  end:
  	local_irq_restore(flags);
  }
-@@ -472,7 +500,12 @@ static struct list_head *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache
+@@ -472,7 +500,12 @@ static struct list_head *rds_ib_recv_cac
  	return head;
  }
  
@@ -254,7 +259,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	struct rds_ib_incoming *ibinc;
  	struct rds_page_frag *frag;
-@@ -481,22 +514,52 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -481,22 +514,52 @@ int rds_ib_inc_copy_to_user(struct rds_i
  	int copied = 0;
  	int ret;
  	u32 len;
@@ -307,7 +312,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		rds_stats_add(s_copy_to_user, to_copy);
  		ret = copy_page_to_iter(sg_page(&frag->f_sg),
  					frag->f_sg.offset + frag_off,
-@@ -504,6 +567,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -504,6 +567,7 @@ int rds_ib_inc_copy_to_user(struct rds_i
  					to);
  		if (ret != to_copy)
  			return -EFAULT;
@@ -315,7 +320,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		frag_off += to_copy;
  		copied += to_copy;
-@@ -583,7 +647,11 @@ static void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq,
+@@ -583,7 +647,11 @@ static void rds_ib_set_ack(struct rds_ib
  {
  	atomic64_set(&ic->i_ack_next, seq);
  	if (ack_required) {
@@ -327,7 +332,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
  	}
  }
-@@ -591,7 +659,11 @@ static void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq,
+@@ -591,7 +659,11 @@ static void rds_ib_set_ack(struct rds_ib
  static u64 rds_ib_get_ack(struct rds_ib_connection *ic)
  {
  	clear_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
@@ -339,7 +344,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	return atomic64_read(&ic->i_ack_next);
  }
-@@ -752,7 +824,11 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
+@@ -752,7 +824,11 @@ static void rds_ib_cong_recv(struct rds_
  		to_copy = min(RDS_FRAG_SIZE - frag_off, PAGE_SIZE - map_off);
  		BUG_ON(to_copy & 7); /* Must be 64bit aligned. */
  
@@ -351,7 +356,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		src = addr + frag_off;
  		dst = (void *)map->m_page_addrs[map_page] + map_off;
-@@ -762,7 +838,11 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
+@@ -762,7 +838,11 @@ static void rds_ib_cong_recv(struct rds_
  			uncongested |= ~(*src) & *dst;
  			*dst++ = *src++;
  		}
@@ -363,11 +368,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		copied += to_copy;
  
-diff --git a/net/rds/ib_sysctl.c b/net/rds/ib_sysctl.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/ib_sysctl.c
 +++ b/net/rds/ib_sysctl.c
-@@ -61,6 +61,7 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
+@@ -61,6 +61,7 @@ static unsigned long rds_ib_sysctl_max_u
   */
  unsigned int rds_ib_sysctl_flow_control = 0;
  
@@ -375,11 +378,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  static struct ctl_table rds_ib_sysctl_table[] = {
  	{
  		.procname       = "max_send_wr",
-@@ -105,17 +106,38 @@ static struct ctl_table rds_ib_sysctl_table[] = {
+@@ -105,17 +106,38 @@ static struct ctl_table rds_ib_sysctl_ta
  	},
  	{ }
  };
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0)
++#ifndef HAVE_REGISTER_NET_SYSCTL
 +static struct ctl_path rds_ib_ctl_path[] = {
 +	{ .procname = "net" },
 +	{ .procname = "rds" },
@@ -393,7 +396,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
  	if (rds_ib_sysctl_hdr)
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  		unregister_net_sysctl_table(rds_ib_sysctl_hdr);
 +#else
 +		unregister_sysctl_table(rds_ib_sysctl_hdr);
@@ -404,7 +407,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  int rds_ib_sysctl_init(void)
  {
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  	rds_ib_sysctl_hdr = register_net_sysctl(&init_net, "net/rds/ib", rds_ib_sysctl_table);
 +#else
 +	rds_ib_sysctl_hdr = register_sysctl_paths(rds_ib_ctl_path, rds_ib_sysctl_table);
@@ -414,11 +417,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	return 0;
  }
-diff --git a/net/rds/info.c b/net/rds/info.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/info.c
 +++ b/net/rds/info.c
-@@ -104,7 +104,11 @@ EXPORT_SYMBOL_GPL(rds_info_deregister_func);
+@@ -104,7 +104,11 @@ EXPORT_SYMBOL_GPL(rds_info_deregister_fu
  void rds_info_iter_unmap(struct rds_info_iterator *iter)
  {
  	if (iter->addr) {
@@ -430,7 +431,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		iter->addr = NULL;
  	}
  }
-@@ -119,7 +123,11 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
+@@ -119,7 +123,11 @@ void rds_info_copy(struct rds_info_itera
  
  	while (bytes) {
  		if (!iter->addr)
@@ -442,7 +443,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		this = min(bytes, PAGE_SIZE - iter->offset);
  
-@@ -134,7 +142,11 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
+@@ -134,7 +142,11 @@ void rds_info_copy(struct rds_info_itera
  		iter->offset += this;
  
  		if (iter->offset == PAGE_SIZE) {
@@ -454,11 +455,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  			iter->addr = NULL;
  			iter->offset = 0;
  			iter->pages++;
-diff --git a/net/rds/iw.h b/net/rds/iw.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/iw.h
 +++ b/net/rds/iw.h
-@@ -325,7 +325,12 @@ int rds_iw_recv(struct rds_connection *conn);
+@@ -325,7 +325,12 @@ int rds_iw_recv(struct rds_connection *c
  int rds_iw_recv_refill(struct rds_connection *conn, gfp_t kptr_gfp,
  		       gfp_t page_gfp, int prefill);
  void rds_iw_inc_free(struct rds_incoming *inc);
@@ -471,11 +470,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_iw_recv_cq_comp_handler(struct ib_cq *cq, void *context);
  void rds_iw_recv_tasklet_fn(unsigned long data);
  void rds_iw_recv_init_ring(struct rds_iw_connection *ic);
-diff --git a/net/rds/iw_recv.c b/net/rds/iw_recv.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/iw_recv.c
 +++ b/net/rds/iw_recv.c
-@@ -303,7 +303,12 @@ void rds_iw_inc_free(struct rds_incoming *inc)
+@@ -303,7 +303,12 @@ void rds_iw_inc_free(struct rds_incoming
  	BUG_ON(atomic_read(&rds_iw_allocation) < 0);
  }
  
@@ -488,7 +485,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	struct rds_iw_incoming *iwinc;
  	struct rds_page_frag *frag;
-@@ -312,22 +317,52 @@ int rds_iw_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -312,22 +317,52 @@ int rds_iw_inc_copy_to_user(struct rds_i
  	int copied = 0;
  	int ret;
  	u32 len;
@@ -541,7 +538,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		rds_stats_add(s_copy_to_user, to_copy);
  		ret = copy_page_to_iter(frag->f_page,
  					frag->f_offset + frag_off,
-@@ -335,6 +370,7 @@ int rds_iw_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -335,6 +370,7 @@ int rds_iw_inc_copy_to_user(struct rds_i
  					to);
  		if (ret != to_copy)
  			return -EFAULT;
@@ -549,7 +546,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		frag_off += to_copy;
  		copied += to_copy;
-@@ -582,8 +618,11 @@ static void rds_iw_cong_recv(struct rds_connection *conn,
+@@ -582,8 +618,11 @@ static void rds_iw_cong_recv(struct rds_
  
  		to_copy = min(RDS_FRAG_SIZE - frag_off, PAGE_SIZE - map_off);
  		BUG_ON(to_copy & 7); /* Must be 64bit aligned. */
@@ -562,7 +559,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		src = addr + frag_off;
  		dst = (void *)map->m_page_addrs[map_page] + map_off;
-@@ -593,7 +632,11 @@ static void rds_iw_cong_recv(struct rds_connection *conn,
+@@ -593,7 +632,11 @@ static void rds_iw_cong_recv(struct rds_
  			uncongested |= ~(*src) & *dst;
  			*dst++ = *src++;
  		}
@@ -574,11 +571,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		copied += to_copy;
  
-diff --git a/net/rds/iw_sysctl.c b/net/rds/iw_sysctl.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/iw_sysctl.c
 +++ b/net/rds/iw_sysctl.c
-@@ -55,6 +55,7 @@ static unsigned long rds_iw_sysctl_max_unsig_bytes_max = ~0UL;
+@@ -55,6 +55,7 @@ static unsigned long rds_iw_sysctl_max_u
  
  unsigned int rds_iw_sysctl_flow_control = 1;
  
@@ -586,11 +581,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  static struct ctl_table rds_iw_sysctl_table[] = {
  	{
  		.procname       = "max_send_wr",
-@@ -108,16 +109,37 @@ static struct ctl_table rds_iw_sysctl_table[] = {
+@@ -108,16 +109,37 @@ static struct ctl_table rds_iw_sysctl_ta
  	},
  	{ }
  };
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0)
++#ifndef HAVE_REGISTER_NET_SYSCTL
 +static struct ctl_path rds_iw_ctl_path[] = {
 +	{ .procname = "net" },
 +	{ .procname = "rds" },
@@ -603,7 +598,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_iw_sysctl_exit(void)
  {
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  	unregister_net_sysctl_table(rds_iw_sysctl_hdr);
 +#else
 +	unregister_sysctl_table(rds_iw_sysctl_hdr);
@@ -614,7 +609,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  int rds_iw_sysctl_init(void)
  {
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  	rds_iw_sysctl_hdr = register_net_sysctl(&init_net, "net/rds/iw", rds_iw_sysctl_table);
 +#else
 +	rds_iw_sysctl_hdr = register_sysctl_paths(rds_iw_ctl_path, rds_iw_sysctl_table);
@@ -624,11 +619,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	return 0;
  }
-diff --git a/net/rds/message.c b/net/rds/message.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/message.c
 +++ b/net/rds/message.c
-@@ -264,31 +264,84 @@ struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned in
+@@ -264,31 +264,84 @@ struct rds_message *rds_message_map_page
  	return rm;
  }
  
@@ -714,7 +707,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		to_copy = min_t(unsigned long, iov_iter_count(from),
  				sg->length - sg_off);
  
-@@ -297,6 +350,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
+@@ -297,6 +350,7 @@ int rds_message_copy_from_user(struct rd
  					     to_copy, from);
  		if (nbytes != to_copy)
  			return -EFAULT;
@@ -722,7 +715,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		sg_off += to_copy;
  
-@@ -307,9 +361,18 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
+@@ -307,9 +361,18 @@ int rds_message_copy_from_user(struct rd
  	return ret;
  }
  
@@ -741,7 +734,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	struct scatterlist *sg;
  	unsigned long to_copy;
  	unsigned long vec_off;
-@@ -320,10 +383,40 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -320,10 +383,40 @@ int rds_message_inc_copy_to_user(struct
  	rm = container_of(inc, struct rds_message, m_inc);
  	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
  
@@ -782,7 +775,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	while (iov_iter_count(to) && copied < len) {
  		to_copy = min_t(unsigned long, iov_iter_count(to),
  				sg->length - vec_off);
-@@ -334,6 +427,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -334,6 +427,7 @@ int rds_message_inc_copy_to_user(struct
  					to_copy, to);
  		if (ret != to_copy)
  			return -EFAULT;
@@ -790,8 +783,6 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  		vec_off += to_copy;
  		copied += to_copy;
-diff --git a/net/rds/rds.h b/net/rds/rds.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/rds.h
 +++ b/net/rds/rds.h
 @@ -7,6 +7,7 @@
@@ -815,7 +806,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	void (*inc_free)(struct rds_incoming *inc);
  
  	int (*cm_handle_connect)(struct rdma_cm_id *cm_id,
-@@ -656,7 +662,12 @@ rds_conn_connecting(struct rds_connection *conn)
+@@ -656,7 +662,12 @@ rds_conn_connecting(struct rds_connectio
  /* message.c */
  struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
  struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents);
@@ -828,7 +819,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned int total_len);
  void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
  				 __be16 dport, u64 seq);
-@@ -665,7 +676,12 @@ int rds_message_add_extension(struct rds_header *hdr,
+@@ -665,7 +676,12 @@ int rds_message_add_extension(struct rds
  int rds_message_next_extension(struct rds_header *hdr,
  			       unsigned int *pos, void *buf, unsigned int *buflen);
  int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset);
@@ -841,7 +832,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_message_inc_free(struct rds_incoming *inc);
  void rds_message_addref(struct rds_message *rm);
  void rds_message_put(struct rds_message *rm);
-@@ -702,8 +718,13 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
+@@ -702,8 +718,13 @@ void rds_inc_init(struct rds_incoming *i
  void rds_inc_put(struct rds_incoming *inc);
  void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
  		       struct rds_incoming *inc, gfp_t gfp);
@@ -855,7 +846,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_clear_recv_queue(struct rds_sock *rs);
  int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msg);
  void rds_inc_info_copy(struct rds_incoming *inc,
-@@ -711,8 +732,12 @@ void rds_inc_info_copy(struct rds_incoming *inc,
+@@ -711,8 +732,12 @@ void rds_inc_info_copy(struct rds_incomi
  		       __be32 saddr, __be32 daddr, int flip);
  
  /* send.c */
@@ -868,11 +859,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_send_reset(struct rds_connection *conn);
  int rds_send_xmit(struct rds_connection *conn);
  struct sockaddr_in;
-diff --git a/net/rds/recv.c b/net/rds/recv.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/recv.c
 +++ b/net/rds/recv.c
-@@ -395,8 +395,13 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg)
+@@ -395,8 +395,13 @@ static int rds_cmsg_recv(struct rds_inco
  	return 0;
  }
  
@@ -886,7 +875,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	struct sock *sk = sock->sk;
  	struct rds_sock *rs = rds_sk_to_rs(sk);
-@@ -414,7 +419,9 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+@@ -414,7 +419,9 @@ int rds_recvmsg(struct kiocb *iocb, stru
  		goto out;
  
  	while (1) {
@@ -896,7 +885,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		/* If there are pending notifications, do those - and nothing else */
  		if (!list_empty(&rs->rs_notify_queue)) {
  			ret = rds_notify_queue_get(rs, msg);
-@@ -450,8 +457,13 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+@@ -450,8 +457,13 @@ int rds_recvmsg(struct kiocb *iocb, stru
  		rdsdebug("copying inc %p from %pI4:%u to user\n", inc,
  			 &inc->i_conn->c_faddr,
  			 ntohs(inc->i_hdr.h_sport));
@@ -910,7 +899,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (ret < 0)
  			break;
  
-@@ -464,7 +476,9 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+@@ -464,7 +476,9 @@ int rds_recvmsg(struct kiocb *iocb, stru
  			rds_inc_put(inc);
  			inc = NULL;
  			rds_stats_inc(s_recv_deliver_raced);
@@ -920,11 +909,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  			continue;
  		}
  
-diff --git a/net/rds/send.c b/net/rds/send.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/send.c
 +++ b/net/rds/send.c
-@@ -920,8 +920,12 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
+@@ -920,8 +920,12 @@ static int rds_cmsg_send(struct rds_sock
  	return ret;
  }
  
@@ -937,7 +924,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  {
  	struct sock *sk = sock->sk;
  	struct rds_sock *rs = rds_sk_to_rs(sk);
-@@ -982,7 +986,11 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+@@ -982,7 +986,11 @@ int rds_sendmsg(struct kiocb *iocb, stru
  			ret = -ENOMEM;
  			goto out;
  		}
@@ -949,11 +936,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  		if (ret)
  			goto out;
  	}
-diff --git a/net/rds/sysctl.c b/net/rds/sysctl.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/sysctl.c
 +++ b/net/rds/sysctl.c
-@@ -49,6 +49,7 @@ unsigned int  rds_sysctl_max_unacked_bytes = (16 << 20);
+@@ -49,6 +49,7 @@ unsigned int  rds_sysctl_max_unacked_byt
  
  unsigned int rds_sysctl_ping_enable = 1;
  
@@ -961,11 +946,11 @@ index xxxxxxx..xxxxxxx xxxxxx
  static struct ctl_table rds_sysctl_rds_table[] = {
  	{
  		.procname       = "reconnect_min_delay_ms",
-@@ -91,10 +92,24 @@ static struct ctl_table rds_sysctl_rds_table[] = {
+@@ -91,10 +92,24 @@ static struct ctl_table rds_sysctl_rds_t
  	},
  	{ }
  };
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0)
++#ifndef HAVE_REGISTER_NET_SYSCTL
 +static struct ctl_path rds_ctl_path[] = {
 +	{ .procname = "net" },
 +	{ .procname = "rds" },
@@ -977,7 +962,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  void rds_sysctl_exit(void)
  {
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  	unregister_net_sysctl_table(rds_sysctl_reg_table);
 +#else
 +	unregister_sysctl_table(rds_sysctl_reg_table);
@@ -991,7 +976,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	rds_sysctl_reconnect_min_jiffies = rds_sysctl_reconnect_min;
  
 +#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifdef HAVE_REGISTER_NET_SYSCTL
  	rds_sysctl_reg_table = register_net_sysctl(&init_net,"net/rds", rds_sysctl_rds_table);
 +#else
 +	rds_sysctl_reg_table = register_sysctl_paths(rds_ctl_path, rds_sysctl_rds_table);
@@ -1001,11 +986,9 @@ index xxxxxxx..xxxxxxx xxxxxx
 +#endif
  	return 0;
  }
-diff --git a/net/rds/tcp.h b/net/rds/tcp.h
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/tcp.h
 +++ b/net/rds/tcp.h
-@@ -61,15 +61,28 @@ void rds_tcp_state_change(struct sock *sk);
+@@ -61,15 +61,28 @@ void rds_tcp_state_change(struct sock *s
  /* tcp_listen.c */
  int rds_tcp_listen_init(void);
  void rds_tcp_listen_stop(void);
@@ -1034,11 +1017,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  /* tcp_send.c */
  void rds_tcp_xmit_prepare(struct rds_connection *conn);
-diff --git a/net/rds/tcp_listen.c b/net/rds/tcp_listen.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/tcp_listen.c
 +++ b/net/rds/tcp_listen.c
-@@ -67,12 +67,21 @@ static int rds_tcp_accept_one(struct socket *sock)
+@@ -67,12 +67,21 @@ static int rds_tcp_accept_one(struct soc
  
  	inet = inet_sk(new_sock->sk);
  
@@ -1060,7 +1041,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  	if (IS_ERR(conn)) {
  		ret = PTR_ERR(conn);
  		goto out;
-@@ -108,9 +117,15 @@ static void rds_tcp_accept_worker(struct work_struct *work)
+@@ -108,9 +117,15 @@ static void rds_tcp_accept_worker(struct
  		cond_resched();
  }
  
@@ -1076,7 +1057,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  	rdsdebug("listen data ready sk %p\n", sk);
  
-@@ -132,7 +147,11 @@ void rds_tcp_listen_data_ready(struct sock *sk)
+@@ -132,7 +147,11 @@ void rds_tcp_listen_data_ready(struct so
  
  out:
  	read_unlock(&sk->sk_callback_lock);
@@ -1088,11 +1069,9 @@ index xxxxxxx..xxxxxxx xxxxxx
  }
  
  int rds_tcp_listen_init(void)
-diff --git a/net/rds/tcp_recv.c b/net/rds/tcp_recv.c
-index xxxxxxx..xxxxxxx xxxxxx
 --- a/net/rds/tcp_recv.c
 +++ b/net/rds/tcp_recv.c
-@@ -59,18 +59,64 @@ void rds_tcp_inc_free(struct rds_incoming *inc)
+@@ -59,18 +59,64 @@ void rds_tcp_inc_free(struct rds_incomin
  /*
   * this is pretty lame, but, whatever.
   */
@@ -1158,7 +1137,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  		unsigned long to_copy, skb_off;
  		for (skb_off = 0; skb_off < skb->len; skb_off += to_copy) {
  			to_copy = iov_iter_count(to);
-@@ -83,6 +129,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+@@ -83,6 +129,7 @@ int rds_tcp_inc_copy_to_user(struct rds_
  			ret += to_copy;
  
  			if (!iov_iter_count(to))
@@ -1166,7 +1145,7 @@ index xxxxxxx..xxxxxxx xxxxxx
  				goto out;
  		}
  	}
-@@ -294,9 +341,15 @@ int rds_tcp_recv(struct rds_connection *conn)
+@@ -294,9 +341,15 @@ int rds_tcp_recv(struct rds_connection *
  	return ret;
  }
  

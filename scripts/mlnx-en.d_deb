@@ -310,46 +310,50 @@ start()
     local RC=0
 
     # W/A: inbox drivers are loaded at boot instead of new ones
-    local mlxko=$(/sbin/lsmod 2>/dev/null | grep '^mlx' | head -1 | awk '{print $NR}')
-    if [ "X$mlxko" != "X" ]; then
-        local loaded_srcver=$(/bin/cat /sys/module/$mlxko/srcversion 2>/dev/null)
-        local curr_srcver=$(/sbin/modinfo $mlxko 2>/dev/null | grep srcversion | awk '{print $NF}')
-        if [ "X$loaded_srcver" != "X$curr_srcver" ]; then
-            log_msg "start(): Detected loaded old version of module '$mlxko', calling stop..."
-            stop
-        fi
-    fi
-
-    # W/A: modules loaded from initrd without taking new params from /etc/modprobe.d/
-    local conf_files=$(grep -rE "options.*mlx" /etc/modprobe.d/*.conf 2>/dev/null | grep -v ":#" | cut -d":" -f"1" | uniq)
-    local goFlag=1
-    if [ "X$conf_files" != "X" ]; then
-        for file in $conf_files
+    local mlxkos=$(/sbin/lsmod 2>/dev/null | grep '^mlx' | cut -d" " -f"1")
+    if [ "X$mlxkos" != "X" ]; then
+        for mlxko in $mlxkos
         do
-            while read line && [ $goFlag -eq 1 ]
-            do
-                local curr_mod=$(echo $line | sed -r -e 's/.*options //g' | awk '{print $NR}')
-                if ! is_module $curr_mod; then
-                    continue
-                fi
-                for item in $(echo $line | sed -r -e "s/.*options\s*${curr_mod}//g")
-                do
-                    local param=${item%=*}
-                    local conf_value=${item##*=}
-                    local real_value=$(cat /sys/module/${curr_mod}/parameters/${param} 2>/dev/null)
-                    if [ "X$conf_value" != "X$real_value" ]; then
-                        log_msg "start(): Detected '$curr_mod' loaded with '$param=$real_value' instead of '$param=$conf_value' as configured in '$file', calling stop..."
-                        goFlag=0
-                        stop
-                        break
-                    fi
-                done
-            done < $file
-            if [ $goFlag -ne 1 ]; then
+            local loaded_srcver=$(/bin/cat /sys/module/$mlxko/srcversion 2>/dev/null)
+            local curr_srcver=$(/sbin/modinfo $mlxko 2>/dev/null | grep srcversion | awk '{print $NF}')
+            if [ "X$loaded_srcver" != "X$curr_srcver" ]; then
+                log_msg "start(): Detected loaded old version of module '$mlxko', calling stop..."
+                stop
                 break
             fi
         done
     fi
+
+    # W/A: modules loaded from initrd without taking new params from /etc/modprobe.d/
+    local goFlag=1
+    OIFS="${IFS}"
+    NIFS=$'\n'
+    IFS="${NIFS}"
+    for line in $(grep -rE "options.*mlx" /etc/modprobe.d/*.conf 2>/dev/null | grep -v ":#" | cut -d":" -f"2" | uniq)
+    do
+        IFS="${OIFS}"
+        local curr_mod=$(echo $line | sed -r -e 's/.*options //g' | awk '{print $NR}')
+        if ! is_module $curr_mod; then
+            continue
+        fi
+        for item in $(echo $line | sed -r -e "s/.*options\s*${curr_mod}//g")
+        do
+            local param=${item%=*}
+            local conf_value=${item##*=}
+            local real_value=$(cat /sys/module/${curr_mod}/parameters/${param} 2>/dev/null)
+            if [ "X$conf_value" != "X$real_value" ]; then
+                log_msg "start(): Detected '$curr_mod' loaded with '$param=$real_value' instead of '$param=$conf_value' as configured in '$file', calling stop..."
+                goFlag=0
+                stop
+                break
+            fi
+        done
+        if [ $goFlag -ne 1 ]; then
+            break
+        fi
+        IFS="${NIFS}"
+    done
+    IFS="${OIFS}"
 
     if [ "X${MLX4_LOAD}" == "Xyes" ]; then
         load_module mlx4_core
@@ -421,7 +425,7 @@ unload_rec()
     if [ $? -ne 0 ];then
         for dep in `/sbin/rmmod $mod 2>&1 | grep "is in use by" | sed -r -e 's/.*use by[:]* //g' | sed -e 's/,/ /g'`
             do
-                # if $dep was not loaded by openibd, don't unload it; fail with error.
+                # if $dep was not loaded by mlnx-en.d, don't unload it; fail with error.
                 if ! `echo $UNLOAD_MODULES | grep -q $dep` ; then
                         rm_mod $mod
                 else

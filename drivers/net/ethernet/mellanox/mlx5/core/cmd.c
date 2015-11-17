@@ -250,12 +250,21 @@ static void dump_buf(void *buf, int size, int data_only, int offset)
 		pr_debug("\n");
 }
 
-static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op)
+enum {
+	MLX5_DRIVER_SYND = 0xbadd00de,
+	MLX5_DRIVER_STATUS_ABORTED = 0xfe,
+};
+
+static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op, u32 *synd, u8 *status)
 {
+	*synd = 0;
+	*status = 0;
+
 	switch (op) {
-	case MLX5_CMD_OP_DISABLE_HCA:
-	case MLX5_CMD_OP_DESTROY_MKEY:
 	case MLX5_CMD_OP_TEARDOWN_HCA:
+	case MLX5_CMD_OP_DISABLE_HCA:
+	case MLX5_CMD_OP_MANAGE_PAGES:
+	case MLX5_CMD_OP_DESTROY_MKEY:
 	case MLX5_CMD_OP_DESTROY_EQ:
 	case MLX5_CMD_OP_DESTROY_CQ:
 	case MLX5_CMD_OP_DESTROY_QP:
@@ -263,18 +272,24 @@ static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op)
 	case MLX5_CMD_OP_DESTROY_SRQ:
 	case MLX5_CMD_OP_DESTROY_XRC_SRQ:
 	case MLX5_CMD_OP_DESTROY_DCT:
+	case MLX5_CMD_OP_DEALLOC_Q_COUNTER:
 	case MLX5_CMD_OP_DEALLOC_PD:
 	case MLX5_CMD_OP_DEALLOC_UAR:
 	case MLX5_CMD_OP_DETTACH_FROM_MCG:
 	case MLX5_CMD_OP_DEALLOC_XRCD:
-	case MLX5_CMD_OP_MANAGE_PAGES:
+	case MLX5_CMD_OP_DEALLOC_TRANSPORT_DOMAIN:
+	case MLX5_CMD_OP_DELETE_VXLAN_UDP_DPORT:
+	case MLX5_CMD_OP_DELETE_L2_TABLE_ENTRY:
 	case MLX5_CMD_OP_DESTROY_TIR:
 	case MLX5_CMD_OP_DESTROY_SQ:
 	case MLX5_CMD_OP_DESTROY_RQ:
 	case MLX5_CMD_OP_DESTROY_RMP:
+	case MLX5_CMD_OP_DESTROY_TIS:
 	case MLX5_CMD_OP_DESTROY_RQT:
 	case MLX5_CMD_OP_DESTROY_FLOW_TABLE:
 	case MLX5_CMD_OP_DESTROY_FLOW_GROUP:
+	case MLX5_CMD_OP_DELETE_FLOW_TABLE_ENTRY:
+	case MLX5_CMD_OP_SET_DC_CNAK_TRACE:
 		return MLX5_CMD_STAT_OK;
 
 	case MLX5_CMD_OP_QUERY_HCA_CAP:
@@ -283,12 +298,15 @@ static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op)
 	case MLX5_CMD_OP_ENABLE_HCA:
 	case MLX5_CMD_OP_QUERY_PAGES:
 	case MLX5_CMD_OP_SET_HCA_CAP:
+	case MLX5_CMD_OP_QUERY_ISSI:
+	case MLX5_CMD_OP_SET_ISSI:
 	case MLX5_CMD_OP_CREATE_MKEY:
 	case MLX5_CMD_OP_QUERY_MKEY:
 	case MLX5_CMD_OP_QUERY_SPECIAL_CONTEXTS:
 	case MLX5_CMD_OP_PAGE_FAULT_RESUME:
 	case MLX5_CMD_OP_CREATE_EQ:
 	case MLX5_CMD_OP_QUERY_EQ:
+	case MLX5_CMD_OP_GEN_EQE:
 	case MLX5_CMD_OP_CREATE_CQ:
 	case MLX5_CMD_OP_QUERY_CQ:
 	case MLX5_CMD_OP_MODIFY_CQ:
@@ -301,23 +319,83 @@ static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op)
 	case MLX5_CMD_OP_2ERR_QP:
 	case MLX5_CMD_OP_2RST_QP:
 	case MLX5_CMD_OP_QUERY_QP:
-	case MLX5_CMD_OP_MAD_IFC:
+	case MLX5_CMD_OP_SQD_RTS_QP:
 	case MLX5_CMD_OP_INIT2INIT_QP:
 	case MLX5_CMD_OP_CREATE_PSV:
 	case MLX5_CMD_OP_CREATE_SRQ:
 	case MLX5_CMD_OP_QUERY_SRQ:
 	case MLX5_CMD_OP_ARM_RQ:
+	case MLX5_CMD_OP_CREATE_XRC_SRQ:
+	case MLX5_CMD_OP_QUERY_XRC_SRQ:
+	case MLX5_CMD_OP_ARM_XRC_SRQ:
 	case MLX5_CMD_OP_CREATE_DCT:
 	case MLX5_CMD_OP_DRAIN_DCT:
 	case MLX5_CMD_OP_QUERY_DCT:
+	case MLX5_CMD_OP_ARM_DCT_FOR_KEY_VIOLATION:
+	case MLX5_CMD_OP_QUERY_VPORT_STATE:
+	case MLX5_CMD_OP_MODIFY_VPORT_STATE:
+	case MLX5_CMD_OP_QUERY_ESW_VPORT_CONTEXT:
+	case MLX5_CMD_OP_MODIFY_ESW_VPORT_CONTEXT:
+	case MLX5_CMD_OP_QUERY_NIC_VPORT_CONTEXT:
+	case MLX5_CMD_OP_MODIFY_NIC_VPORT_CONTEXT:
+	case MLX5_CMD_OP_QUERY_ROCE_ADDRESS:
+	case MLX5_CMD_OP_SET_ROCE_ADDRESS:
+	case MLX5_CMD_OP_QUERY_HCA_VPORT_CONTEXT:
+	case MLX5_CMD_OP_MODIFY_HCA_VPORT_CONTEXT:
+	case MLX5_CMD_OP_QUERY_HCA_VPORT_GID:
+	case MLX5_CMD_OP_QUERY_HCA_VPORT_PKEY:
+	case MLX5_CMD_OP_QUERY_VPORT_COUNTER:
+	case MLX5_CMD_OP_ALLOC_Q_COUNTER:
+	case MLX5_CMD_OP_QUERY_Q_COUNTER:
 	case MLX5_CMD_OP_ALLOC_PD:
 	case MLX5_CMD_OP_ALLOC_UAR:
-	case MLX5_CMD_OP_ATTACH_TO_MCG:
-	case MLX5_CMD_OP_ALLOC_XRCD:
+	case MLX5_CMD_OP_CONFIG_INT_MODERATION:
 	case MLX5_CMD_OP_ACCESS_REG:
+	case MLX5_CMD_OP_ATTACH_TO_MCG:
+	case MLX5_CMD_OP_GET_DROPPED_PACKET_LOG:
+	case MLX5_CMD_OP_MAD_IFC:
+	case MLX5_CMD_OP_QUERY_MAD_DEMUX:
+	case MLX5_CMD_OP_SET_MAD_DEMUX:
+	case MLX5_CMD_OP_NOP:
+	case MLX5_CMD_OP_ALLOC_XRCD:
+	case MLX5_CMD_OP_ALLOC_TRANSPORT_DOMAIN:
+	case MLX5_CMD_OP_QUERY_CONG_STATUS:
+	case MLX5_CMD_OP_MODIFY_CONG_STATUS:
+	case MLX5_CMD_OP_QUERY_CONG_PARAMS:
+	case MLX5_CMD_OP_MODIFY_CONG_PARAMS:
+	case MLX5_CMD_OP_QUERY_CONG_STATISTICS:
+	case MLX5_CMD_OP_ADD_VXLAN_UDP_DPORT:
+	case MLX5_CMD_OP_SET_L2_TABLE_ENTRY:
+	case MLX5_CMD_OP_QUERY_L2_TABLE_ENTRY:
+	case MLX5_CMD_OP_CREATE_TIR:
+	case MLX5_CMD_OP_MODIFY_TIR:
+	case MLX5_CMD_OP_QUERY_TIR:
+	case MLX5_CMD_OP_CREATE_SQ:
+	case MLX5_CMD_OP_MODIFY_SQ:
+	case MLX5_CMD_OP_QUERY_SQ:
+	case MLX5_CMD_OP_CREATE_RQ:
+	case MLX5_CMD_OP_MODIFY_RQ:
+	case MLX5_CMD_OP_QUERY_RQ:
+	case MLX5_CMD_OP_CREATE_RMP:
+	case MLX5_CMD_OP_MODIFY_RMP:
+	case MLX5_CMD_OP_QUERY_RMP:
+	case MLX5_CMD_OP_CREATE_TIS:
+	case MLX5_CMD_OP_MODIFY_TIS:
+	case MLX5_CMD_OP_QUERY_TIS:
+	case MLX5_CMD_OP_CREATE_RQT:
+	case MLX5_CMD_OP_MODIFY_RQT:
+	case MLX5_CMD_OP_QUERY_RQT:
+	case MLX5_CMD_OP_CREATE_FLOW_TABLE:
+	case MLX5_CMD_OP_QUERY_FLOW_TABLE:
+	case MLX5_CMD_OP_CREATE_FLOW_GROUP:
+	case MLX5_CMD_OP_QUERY_FLOW_GROUP:
+	case MLX5_CMD_OP_SET_FLOW_TABLE_ENTRY:
+	case MLX5_CMD_OP_QUERY_FLOW_TABLE_ENTRY:
+		*status = MLX5_DRIVER_STATUS_ABORTED;
+		*synd = MLX5_DRIVER_SYND;
 		return -EIO;
 	default:
-		mlx5_core_err(dev, "Unknown FW command\n");
+		mlx5_core_err(dev, "Unknown FW command (%d)\n", op);
 		return -EINVAL;
 	}
 }
@@ -454,6 +532,9 @@ const char *mlx5_command_str(int command)
 	case MLX5_CMD_OP_CREATE_DCT:
 		return "CREATE_DCT";
 
+	case MLX5_CMD_OP_SET_DC_CNAK_TRACE:
+		return "SET_DC_CNAK_TRACE";
+
 	case MLX5_CMD_OP_DESTROY_DCT:
 		return "DESTROY_DCT";
 
@@ -507,6 +588,153 @@ const char *mlx5_command_str(int command)
 
 	case MLX5_CMD_OP_QUERY_VPORT_COUNTER:
 		return "QUERY_VPORT_COUNTER";
+
+	case MLX5_CMD_OP_SET_WOL_ROL:
+		return "SET_WOL_ROL";
+
+	case MLX5_CMD_OP_QUERY_WOL_ROL:
+		return "QUERY_WOL_ROL";
+
+	case MLX5_CMD_OP_QUERY_Q_COUNTER:
+		return "QUERY_Q_COUNTER";
+
+	case MLX5_CMD_OP_ALLOC_TRANSPORT_DOMAIN:
+		return "ALLOC_TRANSPORT_DOMAIN";
+
+	case MLX5_CMD_OP_DEALLOC_TRANSPORT_DOMAIN:
+		return "DEALLOC_TRANSPORT_DOMAIN";
+
+	case MLX5_CMD_OP_QUERY_CONG_STATUS:
+		return "QUERY_CONG_STATUS";
+
+	case MLX5_CMD_OP_MODIFY_CONG_STATUS:
+		return "MODIFY_CONG_STATUS";
+
+	case MLX5_CMD_OP_QUERY_CONG_PARAMS:
+		return "QUERY_CONG_PARAMS";
+
+	case MLX5_CMD_OP_MODIFY_CONG_PARAMS:
+		return "MODIFY_CONG_PARAMS";
+
+	case MLX5_CMD_OP_QUERY_CONG_STATISTICS:
+		return "QUERY_CONG_STATISTICS";
+
+	case MLX5_CMD_OP_ADD_VXLAN_UDP_DPORT:
+		return "ADD_VXLAN_UDP_DPORT";
+
+	case MLX5_CMD_OP_DELETE_VXLAN_UDP_DPORT:
+		return "DELETE_VXLAN_UDP_DPORT";
+
+	case MLX5_CMD_OP_SET_L2_TABLE_ENTRY:
+		return "SET_L2_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_QUERY_L2_TABLE_ENTRY:
+		return "QUERY_L2_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_DELETE_L2_TABLE_ENTRY:
+		return "DELETE_L2_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_CREATE_TIR:
+		return "CREATE_TIR";
+
+	case MLX5_CMD_OP_MODIFY_TIR:
+		return "MODIFY_TIR";
+
+	case MLX5_CMD_OP_DESTROY_TIR:
+		return "DESTROY_TIR";
+
+	case MLX5_CMD_OP_QUERY_TIR:
+		return "QUERY_TIR";
+
+	case MLX5_CMD_OP_CREATE_SQ:
+		return "CREATE_SQ";
+
+	case MLX5_CMD_OP_MODIFY_SQ:
+		return "MODIFY_SQ";
+
+	case MLX5_CMD_OP_DESTROY_SQ:
+		return "DESTROY_SQ";
+
+	case MLX5_CMD_OP_QUERY_SQ:
+		return "QUERY_SQ";
+
+	case MLX5_CMD_OP_CREATE_RQ:
+		return "CREATE_RQ";
+
+	case MLX5_CMD_OP_MODIFY_RQ:
+		return "MODIFY_RQ";
+
+	case MLX5_CMD_OP_DESTROY_RQ:
+		return "DESTROY_RQ";
+
+	case MLX5_CMD_OP_QUERY_RQ:
+		return "QUERY_RQ";
+
+	case MLX5_CMD_OP_CREATE_RMP:
+		return "CREATE_RMP";
+
+	case MLX5_CMD_OP_MODIFY_RMP:
+		return "MODIFY_RMP";
+
+	case MLX5_CMD_OP_DESTROY_RMP:
+		return "DESTROY_RMP";
+
+	case MLX5_CMD_OP_QUERY_RMP:
+		return "QUERY_RMP";
+
+	case MLX5_CMD_OP_CREATE_TIS:
+		return "CREATE_TIS";
+
+	case MLX5_CMD_OP_MODIFY_TIS:
+		return "MODIFY_TIS";
+
+	case MLX5_CMD_OP_DESTROY_TIS:
+		return "DESTROY_TIS";
+
+	case MLX5_CMD_OP_QUERY_TIS:
+		return "QUERY_TIS";
+
+	case MLX5_CMD_OP_CREATE_RQT:
+		return "CREATE_RQT";
+
+	case MLX5_CMD_OP_MODIFY_RQT:
+		return "MODIFY_RQT";
+
+	case MLX5_CMD_OP_DESTROY_RQT:
+		return "DESTROY_RQT";
+
+	case MLX5_CMD_OP_QUERY_RQT:
+		return "QUERY_RQT";
+
+	case MLX5_CMD_OP_CREATE_FLOW_TABLE:
+		return "CREATE_FLOW_TABLE";
+
+	case MLX5_CMD_OP_DESTROY_FLOW_TABLE:
+		return "DESTROY_FLOW_TABLE";
+
+	case MLX5_CMD_OP_QUERY_FLOW_TABLE:
+		return "QUERY_FLOW_TABLE";
+
+	case MLX5_CMD_OP_CREATE_FLOW_GROUP:
+		return "CREATE_FLOW_GROUP";
+
+	case MLX5_CMD_OP_DESTROY_FLOW_GROUP:
+		return "DESTROY_FLOW_GROUP";
+
+	case MLX5_CMD_OP_QUERY_FLOW_GROUP:
+		return "QUERY_FLOW_GROUP";
+
+	case MLX5_CMD_OP_SET_FLOW_TABLE_ENTRY:
+		return "SET_FLOW_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_QUERY_FLOW_TABLE_ENTRY:
+		return "QUERY_FLOW_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_DELETE_FLOW_TABLE_ENTRY:
+		return "DELETE_FLOW_TABLE_ENTRY";
+
+	case MLX5_CMD_OP_MODIFY_NIC_VPORT_CONTEXT:
+		return "MODIFY_NIC_VPORT_CONTEXT";
 
 	default: return "unknown command opcode";
 	}
@@ -571,6 +799,7 @@ static void cmd_work_handler(struct work_struct *work)
 	struct mlx5_core_dev *dev = container_of(cmd, struct mlx5_core_dev, cmd);
 	struct mlx5_cmd_layout *lay;
 	struct semaphore *sem;
+	unsigned long flags;
 
 	sem = ent->page_queue ? &cmd->pages_sem : &cmd->sem;
 	down(sem);
@@ -583,6 +812,9 @@ static void cmd_work_handler(struct work_struct *work)
 		}
 	} else {
 		ent->idx = cmd->max_reg_cmds;
+		spin_lock_irqsave(&cmd->alloc_lock, flags);
+		clear_bit(ent->idx, &cmd->bitmask);
+		spin_unlock_irqrestore(&cmd->alloc_lock, flags);
 	}
 
 	ent->token = alloc_token(cmd);
@@ -686,6 +918,16 @@ static int wait_func(struct mlx5_core_dev *dev, struct mlx5_cmd_work_ent *ent)
 	return err;
 }
 
+static __be32 *get_synd_ptr(struct mlx5_outbox_hdr *out)
+{
+	return &out->syndrome;
+}
+
+static u8 *get_status_ptr(struct mlx5_outbox_hdr *out)
+{
+	return &out->status;
+}
+
 /*  Notes:
  *    1. Callback functions may not sleep
  *    2. page queue commands do not support asynchrous completion
@@ -704,14 +946,6 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 	int err = 0;
 	s64 ds;
 	u16 op;
-
-	if (pci_channel_offline(dev->pdev) ||
-	    (dev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR)) {
-		/* Device is going through error recovery
-		 * and cannot accept commands.
-		 */
-		return mlx5_internal_err_ret_value(dev, msg_to_opcode(in));
-	}
 
 	if (callback && page_queue)
 		return -EINVAL;
@@ -1202,7 +1436,7 @@ static void free_msg(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *msg)
 	}
 }
 
-void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
+void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, u64 vec)
 {
 	struct mlx5_cmd *cmd = &dev->cmd;
 	struct mlx5_cmd_work_ent *ent;
@@ -1216,7 +1450,10 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 	s64 ds;
 	struct mlx5_cmd_stats *stats;
 	unsigned long flags;
+	unsigned long vector;
 
+	/* there can be at most 32 command queues */
+	vector = vec & 0xffffffff;
 	for (i = 0; i < (1 << cmd->log_sz); i++) {
 		if (test_bit(i, &vector)) {
 			struct semaphore *sem;
@@ -1238,11 +1475,16 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 					ent->ret = verify_signature(ent);
 				else
 					ent->ret = 0;
-				ent->status = ent->lay->status_own >> 1;
+				if (vec & MLX5_TRIGGERED_CMD_COMP)
+					ent->status = MLX5_DRIVER_STATUS_ABORTED;
+				else
+					ent->status = ent->lay->status_own >> 1;
+
 				mlx5_core_dbg(dev, "command completed. ret 0x%x, delivery status %s(0x%x)\n",
 					      ent->ret, deliv_status_to_str(ent->status), ent->status);
 			}
 			free_ent(cmd, ent->idx);
+
 			if (ent->callback) {
 #ifdef HAVE_KTIME_GET_NS
 				ds = ent->ts2 - ent->ts1;
@@ -1271,6 +1513,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 				mlx5_free_cmd_msg(dev, ent->out);
 				free_msg(dev, ent->in);
 
+				err = err ? err : ent->status;
 				free_cmd(ent);
 				callback(err, context);
 			} else {
@@ -1354,15 +1597,15 @@ static int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 	gfp_t gfp;
 	int err;
 	u8 status = 0;
-
-	if (dev->priv.sriov.vf_partial_init) {
-		mlx5_core_warn(dev, "device is not initialized\n");
-		return -EPERM;
-	}
+	u32 drv_synd;
 
 	if (pci_channel_offline(dev->pdev) ||
-	    dev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR)
-		return mlx5_internal_err_ret_value(dev, opcode_from_in(in));
+	    dev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR) {
+		err = mlx5_internal_err_ret_value(dev, opcode_from_in(in), &drv_synd, &status);
+		*get_synd_ptr(out) = drv_synd;
+		*get_status_ptr(out) = status;
+		return err;
+	}
 
 	pages_queue = is_manage_pages(in);
 	gfp = callback ? GFP_ATOMIC : GFP_KERNEL;
@@ -1579,7 +1822,7 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 
 	cmd->checksum_disabled = 1;
 	cmd->max_reg_cmds = (1 << cmd->log_sz) - 1;
-	cmd->bitmask = (1 << cmd->max_reg_cmds) - 1;
+	cmd->bitmask = (1ul << (1 << cmd->log_sz)) - 1;
 
 	cmd->cmdif_rev = ioread32be(&dev->iseg->cmdif_rev_fw_sub) >> 16;
 	if (cmd->cmdif_rev > CMD_IF_REV) {
@@ -1700,6 +1943,8 @@ static const char *cmd_status_str(u8 status)
 		return "bad packet (discarded)";
 	case MLX5_CMD_STAT_BAD_SIZE_OUTS_CQES_ERR:
 		return "bad size too many outstanding CQEs";
+	case MLX5_DRIVER_STATUS_ABORTED:
+		return "aborted by the driver\n";
 	default:
 		return "unknown status";
 	}

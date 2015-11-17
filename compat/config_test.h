@@ -295,8 +295,8 @@
 #error HAVE_NETDEV_HW_ADDR is not defined
 #endif
 
-#ifndef HAVE_PCI_VF_ASSIGNED
-#error HAVE_PCI_VF_ASSIGNED is not defined
+#ifndef HAVE_PCI_VFS_ASSIGNED
+#error HAVE_PCI_VFS_ASSIGNED is not defined
 #endif
 
 #ifndef HAVE_NETDEV_HW_FEATURES

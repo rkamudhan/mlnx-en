@@ -19,6 +19,23 @@
 #define __percpu
 #endif
 
+#ifndef pgprot_writecombine
+#if defined(__i386__) || defined(__x86_64__)
+static inline pgprot_t pgprot_writecombine(pgprot_t _prot)
+{
+	return __pgprot(pgprot_val(_prot) | (_PAGE_PWT));
+}
+#elif defined(CONFIG_PPC64)
+static inline pgprot_t pgprot_writecombine(pgprot_t _prot)
+{
+	return __pgprot((pgprot_val(_prot) | _PAGE_NO_CACHE) &
+				     ~(pgprot_t)_PAGE_GUARDED);
+}
+#else	/* !(defined(__i386__) || defined(__x86_64__)) */
+#define pgprot_writecombine pgprot_noncached
+#endif
+#endif
+
 #ifndef find_last_bit
 /**
  * find_last_bit - find the last set bit in a memory region
@@ -232,11 +249,6 @@ static inline bool qdisc_all_tx_empty(const struct net_device *dev)
 		rcu_dereference((p))
 #endif
 
-static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
-{
-	return !ptr || IS_ERR_VALUE((unsigned long)ptr);
-}
-
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 typedef u64 phys_addr_t;
 #else
@@ -338,14 +350,6 @@ static inline void reinit_completion(struct completion *x)
 }
 
 #endif
-
-/**
- * list_next_entry - get the next element in list
- * @pos:	the type * to cursor
- * @member:	the name of the list_struct within the struct.
- */
-#define list_next_entry(pos, member) \
-	list_entry((pos)->member.next, typeof(*(pos)), member)
 
 /**
  * list_prev_entry - get the prev element in list

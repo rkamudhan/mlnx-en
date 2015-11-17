@@ -68,11 +68,11 @@ extern int iscsit_check_dataout_hdr(struct iscsi_conn *, unsigned char *,
 				struct iscsi_cmd **);
 extern int iscsit_check_dataout_payload(struct iscsi_cmd *, struct iscsi_data *,
 				bool);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0))
+#if !defined(CONFIG_COMPAT_RHEL_7_1) && (LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0))
 extern int iscsit_handle_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
 				unsigned char *);
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
+#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 extern int iscsit_setup_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
 				struct iscsi_nopout *);
 extern int iscsit_process_nop_out(struct iscsi_conn *, struct iscsi_cmd *,
@@ -82,7 +82,7 @@ extern int iscsit_handle_logout_cmd(struct iscsi_conn *, struct iscsi_cmd *,
 				unsigned char *);
 extern int iscsit_handle_task_mgt_cmd(struct iscsi_conn *, struct iscsi_cmd *,
 				unsigned char *);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
+#if defined(CONFIG_COMPAT_RHEL_7_1) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0))
 extern int iscsit_setup_text_cmd(struct iscsi_conn *, struct iscsi_cmd *,
 				 struct iscsi_text *);
 extern int iscsit_process_text_cmd(struct iscsi_conn *, struct iscsi_cmd *,

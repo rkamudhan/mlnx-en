@@ -122,7 +122,7 @@ u16 mlx5e_select_queue(struct net_device *dev, struct sk_buff *skb)
 	/* TODO: QoS and traffic class is not fully implemented */
 	int tc = 0;
 #endif
-	return priv->channel[channel_ix]->tc_to_txq_map[tc];
+	return priv->tc_to_txq_map[channel_ix][tc];
 }
 
 static inline u16 mlx5e_get_inline_hdr_size(struct mlx5e_sq *sq,
@@ -154,9 +154,10 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_sq *sq, struct sk_buff *skb)
 
 	memset(wqe, 0, sizeof(*wqe));
 
-	if (likely(skb->ip_summed == CHECKSUM_PARTIAL))
+	if (likely(skb->ip_summed == CHECKSUM_PARTIAL)) {
 		eseg->cs_flags	= MLX5_ETH_WQE_L3_CSUM | MLX5_ETH_WQE_L4_CSUM;
-	else
+		sq->stats.csum_offload_part++;
+	} else
 		sq->stats.csum_offload_none++;
 
 	if (sq->cc != sq->prev_cc) {
