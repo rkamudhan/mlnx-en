@@ -1,0 +1,221 @@
+#!/usr/bin/env python
+
+import sys
+import commands
+import logging
+import re
+from optparse import OptionParser
+
+HIGH_THROUGHPUT 		= "High Throughput"
+LOW_LATENCY			= "Low Latency"
+
+GET_DEVICE_ID_FROM_INTERFACE	= "cat /sys/class/net/%s/device/device"
+GET_INTERFACE_NUMA_NODE		= "cat /sys/class/net/%s/device/numa_node"
+GET_NUMA_NODE_CPUS		= "ls /sys/devices/system/node/node%s"
+
+
+def add_options (parser):
+	""" Add options to parser
+	"""
+	parser.add_option("-i","--interface",		help = "Shomron interface for max performance tuning")
+	parser.add_option("-b","--max_throughput",	help = "Tune Shomron interface for maximum throughput", action="store_true", default = False)
+	parser.add_option("-l","--min_latency",		help = "Tune Shomron interface for minimum latency", action="store_true", default = False)
+
+def set_logger(options):
+	""" Init logger
+	"""
+	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(levelname)s %(message)s')
+
+def force_dependencies(options):
+	""" Force dependencies between input arguments
+	"""
+	if not (options.max_throughput or options.min_latency):
+		logging.warn("No tuning option selected. Setting to max throughput.")
+		options.max_throughput = True
+
+	if options.max_throughput and options.min_latency:
+		logging.warn("Can't tune for both max throughput and min latency. Setting to max throughput only.")
+		options.min_latency = False
+
+	return options
+
+def verify_interface(interface):
+	""" Verifies the interface belongs to a ethernet Shomron device
+	"""
+	( rc, output ) = commands.getstatusoutput(GET_DEVICE_ID_FROM_INTERFACE%interface)
+	if rc:
+		logging.error("Interface %s doesn't exist. Exiting."%interface)
+		sys.exit(1)
+	dev_id_pattern = re.compile(r'0x\d+')
+	match = dev_id_pattern.search(output)
+	if not match:
+		logging.error("Failed to get device ID for interface %s. Exiting."%interface)
+		sys.exit(1)
+	dev_id = int(match.group(0),16)
+	if dev_id not in [4115,4116]:
+		logging.error("Only Shomron devices may be tuned by this script. Exiting.")
+		sys.exit(1)
+	#[TG] - This is not the best way to decide:
+	if "ib" in interface:
+		logging.error("Only ethernet interfaces may be tuned by this script. Exiting.")
+		sys.exit(1)
+
+def stop_irq_balancer():
+	""" Stops IRQ balancer
+	"""
+	logging.info("Stopping IRQ balancer...")
+	( rc, output ) = commands.getstatusoutput("/etc/init.d/irqbalance stop")
+	( rc, output ) = commands.getstatusoutput("/etc/init.d/irqbalance status")
+	if rc or "running" in output:
+		logging.warn("Failed to stop IRQ balancer.")
+	else:
+		logging.info("IRQ balancer stopped")
+
+def set_number_of_channels(interface):
+	""" Set the interface's number of channels to be number of close CPUs.
+	"""
+	( rc, output ) = commands.getstatusoutput(GET_INTERFACE_NUMA_NODE%interface)
+	if rc:
+		logging.error("Couldn't find NUMA node for interface %s. Exiting."%interface)
+		sys.exit(1)
+	numa_node = int(output)
+	( rc, output ) = commands.getstatusoutput(GET_NUMA_NODE_CPUS%numa_node)
+	if rc:
+		logging.error("Couldn't find NUMA %s CPUs. Exiting."%numa_node)
+		sys.exit(1)
+	channels_number = 0
+	for cpu in output.split("\n"):
+		cpu_pattern = re.compile(r'cpu\d+')
+		match = cpu_pattern.search(cpu)
+		if match:
+			channels_number+=1
+	if not channels_number:
+		logging.error("Couldn't find NUMA %s CPUs. Exiting."%numa_node)
+		sys.exit(1)
+	logging.info("Setting %s number of channels to %s..."%(interface, channels_number))
+	( rc, output ) = commands.getstatusoutput("ethtool -l %s"%interface)
+	start_searching = False
+	channels = 0
+	for line in output.split("\n"):
+		if "Current" in line:
+			start_searching = True
+		if start_searching and "Combined" in line:
+			channels = int(line.split(":")[1])
+	if channels != channels_number:
+		( rc, output ) = commands.getstatusoutput("ethtool -L %s combined %s"%(interface, channels_number))
+		if rc:
+			logging.error("Failed setting number of channels for %s. Exiting."%interface)
+			sys.exit(1)
+	logging.info("Done.")
+
+def enable_pause_frames(interface):
+	""" Enable pause frames for interface.
+	"""
+	logging.info("Enabling pause frames for %s..."%interface)
+	( rc, output ) = commands.getstatusoutput("mst start")
+	( rc, output ) = commands.getstatusoutput("mst status -v")
+	mst_dev = ""
+	last_line = ""
+	for line in output.split("\n"):
+		if interface in line:
+			mst_dev_pattern = re.compile(r'/dev/mst/mt\d+_pciconf\d')
+			match = mst_dev_pattern.search(line)
+			if match:
+				mst_dev = match.group(0)
+			else:
+				match = mst_dev_pattern.search(last_line)
+				if match:
+					mst_dev = match.group(0)
+			break
+		last_line = line
+	if not mst_dev:
+		logging.error("Failed enabling pause framse for %s. Exiting."%interface)
+		sys.exit(1)
+
+	# Check current RX pause status
+	( rc, output ) = commands.getstatusoutput("mcra %s 0xd9124.8"%mst_dev)
+	if rc or int(output,16) != 255:
+		( rc, output ) = commands.getstatusoutput("ethtool -A %s rx on"%interface)
+		if rc:
+			( rc, output ) = commands.getstatusoutput("mcra %s 0xd9124.8 0xff"%mst_dev)
+
+	# Check current TX pause status
+	( rc, output ) = commands.getstatusoutput("mcra %s 0xd9700.0"%mst_dev)
+	if rc or int(output,16) != 255:
+		( rc, output ) = commands.getstatusoutput("ethtool -A %s rx on"%interface)
+		if rc:
+			( rc, output ) = commands.getstatusoutput("mcra %s 0xd9700.0 0xff"%mst_dev)
+	logging.info("Done.")
+
+def enable_hw_lro(interface):
+	""" Enable HW LRO for interface.
+	"""
+	logging.info("Enabling HW LRO for %s..."%interface)
+	( rc, output ) = commands.getstatusoutput("ethtool --set-priv-flags %s hw_lro on"%interface)
+	if rc:
+		logging.error("Failed enabling HW LRO for %s. Exiting."%interface)
+		sys.exit(1)
+	logging.info("Done.")
+
+def set_irq_affinity(interface):
+	""" Running set_irq_affinity.sh script for interface.
+	"""
+	logging.info("Running set_irq_affinity.sh for %s..."%interface)
+	( rc, output ) = commands.getstatusoutput("set_irq_affinity.sh %s"%interface)
+	if rc:
+		logging.error("set_irq_affinity.sh failed for %s. Exiting."%interface)
+		sys.exit(1)
+	logging.info("Done.")
+
+def adjust_tso_window_divisor():
+	""" Adjusting TSO winfow divisor.
+	"""
+	logging.info("Setting TSO window divisor to 1...")
+	( rc, output ) = commands.getstatusoutput("sysctl net.ipv4.tcp_tso_win_divisor=1")
+	if rc:
+		logging.error("Failed setting TSO window divisor. Exiting.")
+		sys.exit(1)
+	logging.info("Done.")
+
+def set_moderation(interface, profile):
+	""" .
+	"""
+	logging.info("Setting RX/TX moderation for ineterface %s for %s performance"%(interface, profile))
+	usecs = (0, 16)[profile == HIGH_THROUGHPUT]
+	frames = (0, 32)[profile == HIGH_THROUGHPUT]
+	( rc, output ) = commands.getstatusoutput("ethtool -C %s rx-usecs %s rx-frames %s tx-usecs %s tx-frames %s"%(interface, usecs, frames, usecs, frames))
+	logging.info("Done.")
+
+def tune_for_max_throughput(interface):
+	""" Tunes the interface for max throughput
+	"""
+	stop_irq_balancer()
+	set_number_of_channels(interface)
+	enable_pause_frames(interface)
+	enable_hw_lro(interface)
+	set_irq_affinity(interface)
+	adjust_tso_window_divisor()
+	set_moderation(interface, HIGH_THROUGHPUT)
+
+def tune_for_min_latency(interface):
+	""" Tunes the interface for min latency
+	"""
+	set_moderation(interface, LOW_LATENCY)
+
+
+if __name__ == '__main__':
+	usage = "usage: %prog --interface <shomron_interface> [options]\nNote - not all tuning done by this script can be undone!"
+	parser = OptionParser(usage)
+	add_options(parser)
+	(options, args) = parser.parse_args()
+	if not options.interface:
+		parser.print_help()
+		sys.exit(1)
+	set_logger(options)
+	options = force_dependencies(options)
+	verify_interface(options.interface)
+	if options.max_throughput:
+		tune_for_max_throughput(options.interface)
+	elif options.min_latency:
+		tune_for_min_latency(options.interface)
+
